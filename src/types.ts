@@ -82,6 +82,24 @@ export interface RuntimeSnapshot {
   components: RuntimeComponentDto[];
 }
 
+export interface HostSettingsDto {
+  configPath: string;
+  registry: string;
+  server: { host: string; port: number };
+  host: {
+    packageName: "agentos";
+    current: string;
+    latest?: string;
+    updateAvailable: boolean;
+  };
+  runtimePackages: Array<{ name: string; current: string }>;
+}
+
+export interface HostUpdateResult {
+  version: string;
+  restarting: true;
+}
+
 export interface StorePackageDto {
   name: string;
   version: string;

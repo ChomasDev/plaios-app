@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
 
 import { loadOrCreateConfig, resolveConfigPath } from "./config.js";
+import { scheduleHostRestart, updateHostPackage } from "./host-settings.js";
 import { installConfiguredPackages } from "./installer.js";
 import { DynamicRuntime } from "./runtime.js";
 import type { RuntimeSnapshot, StorePackageDto } from "./types.js";
@@ -116,6 +117,25 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
             const body = await bodyJson(request) as { instanceId?: unknown; config?: unknown };
             if (typeof body.instanceId !== "string" || !isRecord(body.config)) throw new Error("Invalid configuration request");
             return json(response, 200, await runtime.updateConfig(body.instanceId, body.config));
+          }
+          if (request.method === "GET" && url.pathname === "/api/settings") {
+            return json(response, 200, await runtime.hostSettings());
+          }
+          if (request.method === "PUT" && url.pathname === "/api/settings") {
+            const body = await bodyJson(request) as { registry?: unknown };
+            if (typeof body.registry !== "string") throw new Error("Invalid settings request");
+            return json(response, 200, await runtime.updateRegistry(body.registry));
+          }
+          if (request.method === "POST" && url.pathname === "/api/settings/update") {
+            const body = await bodyJson(request) as { version?: unknown };
+            if (body.version !== undefined && typeof body.version !== "string") throw new Error("Invalid update request");
+            const result = await updateHostPackage({
+              projectRoot: runtime.projectRoot,
+              registry: runtime.snapshot().registry,
+              version: body.version,
+            });
+            scheduleHostRestart();
+            return json(response, 200, result);
           }
           return json(response, 404, { error: "Not found" });
         } catch (error) {

@@ -11,6 +11,7 @@ import type {
 
 import { AgentRuntime } from "./agent-runtime.js";
 import { writeDynamicAppConfig } from "./config.js";
+import { readHostSettings, type HostSettingsDto } from "./host-settings.js";
 import {
   installRuntimePackage,
   installedPackageRoot,
@@ -122,6 +123,21 @@ export class DynamicRuntime {
       registry: this.config.registry,
       components: this.components.map(({ descriptor }) => descriptor),
     };
+  }
+
+  hostSettings(): Promise<HostSettingsDto> {
+    return readHostSettings({
+      projectRoot: this.projectRoot,
+      configPath: this.configPath,
+      registry: this.config.registry,
+      server: this.config.server,
+    });
+  }
+
+  async updateRegistry(registry: string): Promise<HostSettingsDto> {
+    this.config.registry = new URL(registry).href.replace(/\/$/, "");
+    await writeDynamicAppConfig(this.configPath, this.config);
+    return this.hostSettings();
   }
 
   async bridgeData(instanceId: string): Promise<unknown> {
@@ -261,6 +277,10 @@ export class DynamicRuntime {
       if (model) options.model = model;
       if (capabilityDiscovery) options.capabilityDiscovery = capabilityDiscovery;
     }
+    const memory = this.components.find(({ descriptor, instance }) =>
+      descriptor.kind === "memory" && isMemory(instance),
+    )?.instance;
+    if (memory) options.memory = memory;
     const database = this.components.find(({ descriptor, instance }) => descriptor.kind === "database" && instance)?.instance;
     if (database) {
       const provider = database as { scope?: (namespace: string) => unknown };
@@ -294,7 +314,10 @@ export class DynamicRuntime {
     const discovery = this.components.find(({ descriptor, instance }) => descriptor.kind === "discovery" && isCapabilityDiscovery(instance))?.instance as { register(capability: unknown): Promise<void> } | undefined;
     if (!discovery) return;
     for (const { descriptor, instance } of this.components) {
-      if (descriptor.kind === "action" && isCapability(instance)) await discovery.register(instance);
+      // A package may expose a capability from another live interface. Cronjob,
+      // for example, must use the same object for its input listener and its
+      // management tool so newly-created schedules become active immediately.
+      if (isCapability(instance)) await discovery.register(instance);
     }
   }
 

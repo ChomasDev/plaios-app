@@ -6,6 +6,7 @@
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Noto Sans Variable", sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo, monospace;
 }
 
 html:root {
@@ -29,20 +30,20 @@ html:root {
 }
 
 html.dark {
-  --background: oklch(0.148 0.004 228.8);
+  --background: oklch(0.13 0.006 215);
   --foreground: oklch(0.987 0.002 197.1);
-  --card: oklch(0.218 0.008 223.9);
+  --card: oklch(0.16 0.007 215);
   --card-foreground: oklch(0.987 0.002 197.1);
   --primary: oklch(0.925 0.005 214.3);
   --primary-foreground: oklch(0.218 0.008 223.9);
   --secondary: oklch(0.275 0.011 216.9);
   --secondary-foreground: oklch(0.987 0.002 197.1);
-  --muted: oklch(0.275 0.011 216.9);
+  --muted: oklch(0.205 0.009 215);
   --muted-foreground: oklch(0.723 0.014 214.4);
   --accent: oklch(0.275 0.011 216.9);
   --accent-foreground: oklch(0.987 0.002 197.1);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  --border: oklch(1 0 0 / 11%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.56 0.021 213.5);
 }
@@ -53,13 +54,31 @@ html.dark {
     background-image:
       linear-gradient(to right, color-mix(in oklch, var(--border), transparent 72%) 1px, transparent 1px),
       linear-gradient(to bottom, color-mix(in oklch, var(--border), transparent 72%) 1px, transparent 1px);
-    background-size: 48px 48px;
+    background-size: 32px 32px;
     background-attachment: fixed;
   }
 
   button,
   select {
     border-radius: 0;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 1px solid #34d399;
+    outline-offset: -1px;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, #34d399, transparent 55%);
+    color: var(--foreground);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground), transparent 78%) transparent;
   }
 }
 
@@ -68,7 +87,109 @@ html.dark {
   [data-slot="button"],
   [data-slot="input"],
   [data-slot="textarea"],
-  [data-slot="badge"] {
+  [data-slot="badge"],
+  [data-slot="breadcrumb-link"],
+  [data-slot="breadcrumb-page"] {
     border-radius: 0 !important;
+  }
+}
+
+@layer components {
+  .agentos-shell {
+    display: block;
+  }
+
+  .agentos-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 70;
+    display: flex;
+    width: min(18rem, 88vw);
+    height: 100svh;
+    flex-direction: column;
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+    box-shadow: 1.5rem 0 4rem rgb(0 0 0 / 28%);
+  }
+
+  .agentos-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .agentos-sidebar-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgb(0 0 0 / 62%);
+    backdrop-filter: blur(3px);
+  }
+
+  .agentos-topbar {
+    height: 4rem;
+    box-sizing: border-box;
+  }
+
+  .agentos-content {
+    min-width: 0;
+  }
+
+  .agentos-shell > section {
+    min-height: 100svh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .agentos-shell aside {
+    background-image: linear-gradient(to bottom, color-mix(in oklch, var(--muted), transparent 70%), transparent 16rem);
+  }
+
+  @media (min-width: 1024px) {
+    .agentos-shell {
+      display: grid;
+      grid-template-columns: 0 minmax(0, 1fr);
+      transition: grid-template-columns 200ms ease;
+    }
+
+    .agentos-shell.agentos-sidebar-open {
+      grid-template-columns: 16rem minmax(0, 1fr);
+    }
+
+    .agentos-sidebar {
+      position: sticky;
+      top: 0;
+      z-index: 45;
+      grid-column: 1;
+      grid-row: 1;
+      width: 16rem;
+      max-width: none;
+      box-shadow: none;
+      transform: translateX(-100%);
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 200ms ease, visibility 200ms ease;
+    }
+
+    .agentos-sidebar-open .agentos-sidebar {
+      transform: translateX(0);
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .agentos-content {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .agentos-sidebar-scrim {
+      display: none;
+    }
+  }
+
+  .agentos-statusbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 50;
+    background: color-mix(in oklch, var(--background), transparent 4%);
+    backdrop-filter: blur(16px);
   }
 }
