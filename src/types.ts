@@ -82,6 +82,10 @@ export interface RuntimeSnapshot {
   components: RuntimeComponentDto[];
 }
 
+export interface StoreMutationResult extends RuntimeSnapshot {
+  restarting?: true;
+}
+
 export interface HostSettingsDto {
   configPath: string;
   registry: string;
@@ -103,9 +107,11 @@ export interface HostUpdateResult {
 export interface StorePackageDto {
   name: string;
   version: string;
+  installedVersion?: string;
   description?: string;
   keywords: string[];
   installed: boolean;
+  updateAvailable: boolean;
   instances: number;
 }
 

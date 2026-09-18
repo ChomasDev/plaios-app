@@ -117,6 +117,29 @@ export class DynamicRuntime {
     return this.snapshot();
   }
 
+  async updatePackage(packageName: string, version = "latest"): Promise<RuntimeSnapshot> {
+    const definitions = this.config.components.filter((component) => component.package === packageName);
+    if (definitions.length === 0) throw new Error(`${packageName} is not installed`);
+
+    await installRuntimePackage(this.runtimeRoot, this.config.registry, packageName, version);
+    const packageRoot = installedPackageRoot(this.runtimeRoot, packageName);
+    const manifest = await loadPackageManifest(packageRoot);
+    const availableInterfaces = new Set(manifest.interfaces.map(({ id }) => id));
+    const missingInterfaces = definitions
+      .map(({ interface: interfaceId }) => interfaceId)
+      .filter((interfaceId) => !availableInterfaces.has(interfaceId));
+    if (missingInterfaces.length > 0) {
+      throw new Error(
+        `${packageName}@${manifest.version} no longer provides configured interface(s): ${missingInterfaces.join(", ")}`,
+      );
+    }
+
+    for (const definition of definitions) definition.version = manifest.version;
+    await writeDynamicAppConfig(this.configPath, this.config);
+    await this.reload();
+    return this.snapshot();
+  }
+
   snapshot(): RuntimeSnapshot {
     return {
       configPath: this.configPath,
@@ -171,10 +194,11 @@ export class DynamicRuntime {
     await Promise.allSettled([...new Set(this.components.map(({ instance }) => instance).filter(Boolean))].map(closeInstance));
   }
 
-  private async reload(): Promise<void> {
+  async reload(): Promise<RuntimeSnapshot> {
     await this.close();
     this.actions.clear();
     await this.load();
+    return this.snapshot();
   }
 
   private get(instanceId: string): LoadedComponent {
@@ -212,7 +236,7 @@ export class DynamicRuntime {
         instance = shared.instance;
       } else {
         const runtimeEntry = resolvePackageEntry(packageRoot, packageJson, manifestInterface.entry);
-        const module = await import(pathToFileURL(runtimeEntry).href) as RuntimeModule;
+        const module = await import(versionedModuleUrl(runtimeEntry, manifest.version)) as RuntimeModule;
         instance = instantiate(module, manifestInterface, this.componentOptions(manifestInterface, definition));
       }
     } catch (error) {
@@ -417,6 +441,12 @@ function resolvePackageEntry(
     throw new Error(`Package export ${key} resolves outside its package`);
   }
   return resolved;
+}
+
+export function versionedModuleUrl(entry: string, version: string): string {
+  const url = pathToFileURL(entry);
+  url.searchParams.set("agent-os-package-version", version);
+  return url.href;
 }
 
 function exportTarget(exportsValue: unknown, key: string): string | undefined {

@@ -88,6 +88,9 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
           if (request.method === "GET" && url.pathname === "/api/runtime") {
             return json(response, 200, runtime.snapshot());
           }
+          if (request.method === "POST" && url.pathname === "/api/runtime/reload") {
+            return json(response, 200, await runtime.reload());
+          }
           if (request.method === "GET" && url.pathname === "/api/store") {
             return json(response, 200, await listStorePackages(runtime.snapshot()));
           }
@@ -102,6 +105,15 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
             const body = await bodyJson(request) as { packageName?: unknown };
             if (typeof body.packageName !== "string") throw new Error("Invalid Store uninstall request");
             return json(response, 200, await runtime.uninstallPackage(body.packageName));
+          }
+          if (request.method === "POST" && url.pathname === "/api/store/update") {
+            const body = await bodyJson(request) as { packageName?: unknown; version?: unknown };
+            if (typeof body.packageName !== "string" || (body.version !== undefined && typeof body.version !== "string")) {
+              throw new Error("Invalid Store update request");
+            }
+            const snapshot = await runtime.updatePackage(body.packageName, body.version);
+            scheduleHostRestart();
+            return json(response, 200, { ...snapshot, restarting: true });
           }
           const dataMatch = /^\/api\/components\/([^/]+)\/data$/.exec(url.pathname);
           if (request.method === "GET" && dataMatch) {
@@ -156,8 +168,10 @@ async function listStorePackages(snapshot: RuntimeSnapshot): Promise<StorePackag
   const body = await response.json() as { objects?: unknown };
   const objects = Array.isArray(body.objects) ? body.objects : [];
   const instances = new Map<string, number>();
+  const installedVersions = new Map<string, string>();
   for (const component of snapshot.components) {
     instances.set(component.packageName, (instances.get(component.packageName) ?? 0) + 1);
+    installedVersions.set(component.packageName, component.version);
   }
   const candidates = objects.flatMap((entry): Array<{
     name: string;
@@ -186,12 +200,39 @@ async function listStorePackages(snapshot: RuntimeSnapshot): Promise<StorePackag
     return {
       ...candidate,
       version,
+      installedVersion: installedVersions.get(candidate.name),
       installed: instances.has(candidate.name),
+      updateAvailable: isNewerVersion(version, installedVersions.get(candidate.name)),
       instances: instances.get(candidate.name) ?? 0,
     };
   }));
   return resolved.filter((item): item is StorePackageDto => Boolean(item))
     .sort((left, right) => Number(right.installed) - Number(left.installed) || left.name.localeCompare(right.name));
+}
+
+export function isNewerVersion(candidate: string, installed?: string): boolean {
+  if (!installed || candidate === installed) return false;
+  const next = parseSemver(candidate);
+  const current = parseSemver(installed);
+  if (!next || !current) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (next.numbers[index] !== current.numbers[index]) {
+      return next.numbers[index]! > current.numbers[index]!;
+    }
+  }
+  if (next.prerelease === current.prerelease) return false;
+  if (!next.prerelease) return true;
+  if (!current.prerelease) return false;
+  return next.prerelease.localeCompare(current.prerelease, undefined, { numeric: true }) > 0;
+}
+
+function parseSemver(value: string): { numbers: [number, number, number]; prerelease: string } | undefined {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value);
+  if (!match) return undefined;
+  return {
+    numbers: [Number(match[1]), Number(match[2]), Number(match[3])],
+    prerelease: match[4] ?? "",
+  };
 }
 
 async function latestPackageVersion(registry: string, packageName: string): Promise<string | undefined> {
