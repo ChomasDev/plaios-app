@@ -58,6 +58,15 @@ export class AgentRuntime {
   private async handle(message: InputMessage, history: ConversationHistory): Promise<void> {
     const contextualized = await history.contextualize(message);
     await history.rememberUser(contextualized);
+    const confirmation = protocolRememberedReply(contextualized);
+    if (confirmation) {
+      const output = this.options.outputs.find(({ channel }) => channel === message.channel)
+        ?? this.options.outputs[0];
+      if (!output) throw new Error("Agent runtime requires at least one output");
+      await output.write(confirmation);
+      await history.rememberAssistant(message, confirmation);
+      return;
+    }
     const decision = await this.options.orchestrator.orchestrate(contextualized, this.options.outputs);
     await persistMemoryProposals(this.options.memory, message, decision.memoryProposals);
     const output = this.options.outputs.find(({ channel }) => channel === decision.outputChannel);
@@ -133,4 +142,11 @@ async function* capture(stream: AsyncIterable<string>, chunks: string[]): AsyncG
 
 function uniqueByIdentity<T extends object>(values: readonly T[]): T[] {
   return [...new Set(values)];
+}
+
+function protocolRememberedReply(message: InputMessage): string | undefined {
+  if (message.metadata?.protocolRemembered !== true) return undefined;
+  return typeof message.metadata.protocolConfirmation === "string"
+    ? message.metadata.protocolConfirmation
+    : "Ok, lo ricordo.";
 }

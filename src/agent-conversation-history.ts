@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { InputMessage, Memory, MemoryEntry } from "@agent-os/core/domain";
 
+import {
+  findMatchingProtocol,
+  parseProtocolRemember,
+  protocolConfirmation,
+  saveProtocol,
+  type ProtocolMemory,
+} from "./agent-protocols.js";
+
 const CHAT_NAMESPACE = "chat-history";
 
 export const CONVERSATION_HISTORY_LIMIT = 10;
@@ -36,6 +44,12 @@ export class ConversationHistory {
       content: renderContent(entry.content),
     }));
     const currentText = lastUserUtterance(originalText(message));
+    const remembered = parseProtocolRemember(currentText);
+    if (remembered) await saveProtocol(this.memory as ProtocolMemory, message.userId, remembered);
+    const matched = remembered
+      ? undefined
+      : await findMatchingProtocol(this.memory as ProtocolMemory, message.userId, currentText);
+    const requestText = matched?.expansion ?? currentText;
     const fromTranscript = previousTranscriptTurns(originalText(message));
     const conversationHistory = lastTurns(
       fromTranscript.length > 0
@@ -50,10 +64,18 @@ export class ConversationHistory {
       text: buildContext(message.text, conversationHistory, memories, message.createdAt),
       metadata: {
         ...message.metadata,
-        originalText: currentText,
+        originalText: requestText,
         conversationHistory,
         historyEntries: conversationHistory.length,
         memoryEntries: memories.length,
+        ...(remembered
+          ? {
+              protocolRemembered: true,
+              protocolTrigger: remembered.trigger,
+              protocolConfirmation: protocolConfirmation(remembered),
+            }
+          : {}),
+        ...(matched ? { protocolTrigger: matched.trigger } : {}),
       },
     };
   }

@@ -78,3 +78,77 @@ test("peels an OpenClaw transcript into the last user turn and prior messages", 
     { role: "assistant", content: "Fatto, ho acceso led ufficio e Luce ufficio." },
   ]);
 });
+
+test("stores a protocol remember phrase and confirms it", async () => {
+  const stored: unknown[] = [];
+  const history = new ConversationHistory({
+    async remember(entry) {
+      stored.push(entry);
+    },
+    async upsertNode(node: Record<string, unknown>) {
+      stored.push(node);
+      return node;
+    },
+    async recall() {
+      return [];
+    },
+    async get() {
+      return undefined;
+    },
+    async forget() {
+      return false;
+    },
+    async clear() {
+      return 0;
+    },
+  } as Memory);
+
+  const contextualized = await history.contextualize(message({
+    text: 'ricorda che quando dico "protocollo agentos" devi aprire sul mac agentos che è al ip http://100.103.217.8:3100',
+  }));
+
+  assert.equal(contextualized.metadata?.protocolRemembered, true);
+  assert.equal(contextualized.metadata?.protocolTrigger, "protocollo agentos");
+  assert.match(String(contextualized.metadata?.protocolConfirmation), /100\.103\.217\.8:3100/);
+  assert.ok(stored.some((item) => isRecord(item) && item.type === "protocol"));
+});
+
+test("expands a matching protocol before the orchestrator runs", async () => {
+  const history = new ConversationHistory({
+    async remember() {},
+    async listNodes() {
+      return [{
+        type: "protocol",
+        label: "protocollo agentos",
+        data: {
+          trigger: "protocollo agentos",
+          expansion: "Apri http://100.103.217.8:3100 sul Mac",
+          url: "http://100.103.217.8:3100",
+        },
+      }];
+    },
+    async recall() {
+      return [];
+    },
+    async get() {
+      return undefined;
+    },
+    async forget() {
+      return false;
+    },
+    async clear() {
+      return 0;
+    },
+  } as Memory);
+
+  const contextualized = await history.contextualize(message({
+    text: "protocollo agentos",
+  }));
+
+  assert.equal(contextualized.metadata?.originalText, "Apri http://100.103.217.8:3100 sul Mac");
+  assert.equal(contextualized.metadata?.protocolTrigger, "protocollo agentos");
+});
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}

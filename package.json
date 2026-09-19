@@ -1,6 +1,6 @@
 {
   "name": "@agent-os/app-dynamic",
-  "version": "0.7.13",
+  "version": "0.7.14",
   "description": "Dynamic Agent OS runtime host and swappable microfrontend control plane",
   "keywords": ["agent-os", "dynamic", "runtime", "microfrontend", "registry"],
   "private": false,

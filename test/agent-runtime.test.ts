@@ -88,3 +88,36 @@ test("forwards bypassModel from the orchestrator to the agent loop", async () =>
   assert.deepEqual(written, ["Turned off Office."]);
   await runtime.stop();
 });
+
+test("confirms a remembered protocol without calling the orchestrator", async () => {
+  let orchestrated = false;
+  const { runtime, getListener, written } = createHarness(
+    {
+      async orchestrate() {
+        orchestrated = true;
+        return { capabilityIds: [], outputChannel: "openrouter-api" };
+      },
+    } as Orchestrator,
+    {
+      async run() {
+        return { type: "text" as const, text: "should not run" };
+      },
+    } as AgentLoop,
+  );
+  runtime.start();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const listener = getListener();
+  assert.ok(listener);
+  await listener({
+    id: "request-3",
+    channel: "openrouter-api",
+    sessionId: "session-1",
+    userId: "user-1",
+    text: 'ricorda che quando dico "protocollo agentos" devi aprire sul mac agentos che è al ip http://100.103.217.8:3100',
+    createdAt: new Date(),
+  });
+  assert.equal(orchestrated, false);
+  assert.match(written[0] ?? "", /protocollo agentos/);
+  assert.match(written[0] ?? "", /100\.103\.217\.8:3100/);
+  await runtime.stop();
+});
