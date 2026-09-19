@@ -185,6 +185,34 @@ html.dark {
     }
   }
 
+  .agentos-runtime-graph {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .agentos-graph-edge {
+    display: none;
+  }
+
+  @media (min-width: 1180px) {
+    .agentos-runtime-graph {
+      grid-template-columns: minmax(15rem, 0.9fr) 1.25rem minmax(20rem, 1.3fr) 1.25rem minmax(15rem, 0.9fr);
+      align-items: start;
+    }
+
+    .agentos-graph-edge {
+      display: block;
+      align-self: stretch;
+      min-height: 8rem;
+      background:
+        linear-gradient(to bottom, transparent 0, transparent calc(50% - 1px), color-mix(in oklch, var(--foreground), transparent 72%) calc(50% - 1px), color-mix(in oklch, var(--foreground), transparent 72%) calc(50% + 1px), transparent calc(50% + 1px)),
+        linear-gradient(to right, transparent 0, transparent calc(50% - 1px), #34d399 calc(50% - 1px), #34d399 calc(50% + 1px), transparent calc(50% + 1px));
+      background-size: 100% 100%, 100% 0.5rem;
+      background-position: center, center;
+      background-repeat: no-repeat;
+    }
+  }
+
   .agentos-statusbar {
     position: sticky;
     bottom: 0;

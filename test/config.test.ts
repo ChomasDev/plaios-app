@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseDynamicAppConfig, starterConfig } from "../src/config.js";
+import { parseDynamicAppConfig, serializeDynamicAppConfig, starterConfig } from "../src/config.js";
 import { parseStartArguments } from "../src/cli.js";
 
 test("parses dynamic component instances and fills server defaults", () => {
@@ -17,6 +17,21 @@ components:
   assert.equal(config.server.port, 3100);
   assert.equal(config.components[0]?.instanceId, "sqlite.database:1");
   assert.equal(config.components[0]?.config?.databasePath, ":memory:");
+});
+
+test("parses disabled components and omits enabled when serializing the default", () => {
+  const config = parseDynamicAppConfig(`
+schemaVersion: 1
+registry: http://localhost:4873
+components:
+  - { package: telegram, interface: telegram.input, instanceId: input:telegram, enabled: false }
+  - { package: telegram, interface: telegram.output, instanceId: output:telegram }
+`);
+  assert.equal(config.components[0]?.enabled, false);
+  assert.equal(config.components[1]?.enabled, undefined);
+  const yaml = serializeDynamicAppConfig(config);
+  assert.match(yaml, /enabled: false/);
+  assert.equal((yaml.match(/enabled:/g) ?? []).length, 1);
 });
 
 test("rejects duplicate instances and unsafe package names", () => {

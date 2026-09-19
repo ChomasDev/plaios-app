@@ -9,7 +9,9 @@ import { loadOrCreateConfig, resolveConfigPath } from "./config.js";
 import { scheduleHostRestart, updateHostPackage } from "./host-settings.js";
 import { installConfiguredPackages } from "./installer.js";
 import { DynamicRuntime } from "./runtime.js";
-import type { RuntimeSnapshot, StorePackageDto } from "./types.js";
+import { listStorePackages } from "./store-catalog.js";
+import type { InterfaceKind } from "./types.js";
+import { INTERFACE_KINDS } from "./types.js";
 
 export interface StartDynamicAppOptions {
   currentDirectory?: string;
@@ -149,6 +151,29 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
             scheduleHostRestart();
             return json(response, 200, result);
           }
+          if (request.method === "POST" && url.pathname === "/api/settings/swap") {
+            const body = await bodyJson(request) as { kind?: unknown; packageName?: unknown; version?: unknown };
+            if (typeof body.kind !== "string" || !INTERFACE_KINDS.includes(body.kind as InterfaceKind)) {
+              throw new Error("Invalid swap kind");
+            }
+            if (typeof body.packageName !== "string" || (body.version !== undefined && typeof body.version !== "string")) {
+              throw new Error("Invalid swap request");
+            }
+            const snapshot = await runtime.swapKind(body.kind as InterfaceKind, body.packageName, body.version);
+            return json(response, 200, { ...snapshot, kind: body.kind, packageName: body.packageName, version: body.version ?? "latest" });
+          }
+          if (request.method === "POST" && url.pathname === "/api/settings/component") {
+            const body = await bodyJson(request) as { instanceId?: unknown; enabled?: unknown };
+            if (typeof body.instanceId !== "string" || typeof body.enabled !== "boolean") {
+              throw new Error("Invalid component toggle request");
+            }
+            return json(response, 200, await runtime.setComponentEnabled(body.instanceId, body.enabled));
+          }
+          if (request.method === "DELETE" && url.pathname === "/api/settings/component") {
+            const body = await bodyJson(request) as { instanceId?: unknown };
+            if (typeof body.instanceId !== "string") throw new Error("Invalid component remove request");
+            return json(response, 200, await runtime.removeComponent(body.instanceId));
+          }
           return json(response, 404, { error: "Not found" });
         } catch (error) {
           return json(response, 400, { error: error instanceof Error ? error.message : String(error) });
@@ -158,91 +183,7 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
   };
 }
 
-async function listStorePackages(snapshot: RuntimeSnapshot): Promise<StorePackageDto[]> {
-  const endpoint = new URL("/-/v1/search", `${snapshot.registry}/`);
-  // An empty query keeps local Verdaccio catalogs fast and avoids an uplink search.
-  endpoint.searchParams.set("text", "");
-  endpoint.searchParams.set("size", "250");
-  const response = await fetch(endpoint, { headers: { accept: "application/json" } });
-  if (!response.ok) throw new Error(`Registry search failed (${response.status})`);
-  const body = await response.json() as { objects?: unknown };
-  const objects = Array.isArray(body.objects) ? body.objects : [];
-  const instances = new Map<string, number>();
-  const installedVersions = new Map<string, string>();
-  for (const component of snapshot.components) {
-    instances.set(component.packageName, (instances.get(component.packageName) ?? 0) + 1);
-    installedVersions.set(component.packageName, component.version);
-  }
-  const candidates = objects.flatMap((entry): Array<{
-    name: string;
-    version?: string;
-    description?: string;
-    keywords: string[];
-  }> => {
-    if (!isRecord(entry) || !isRecord(entry.package)) return [];
-    const value = entry.package;
-    if (typeof value.name !== "string") return [];
-    const keywords = Array.isArray(value.keywords)
-      ? value.keywords.filter((keyword): keyword is string => typeof keyword === "string")
-      : [];
-    const installed = instances.has(value.name);
-    if (!installed && !keywords.includes("capability")) return [];
-    return [{
-      name: value.name,
-      version: typeof value.version === "string" ? value.version : undefined,
-      description: typeof value.description === "string" ? value.description : undefined,
-      keywords,
-    }];
-  });
-  const resolved = await Promise.all(candidates.map(async (candidate): Promise<StorePackageDto | undefined> => {
-    const version = candidate.version ?? await latestPackageVersion(snapshot.registry, candidate.name);
-    if (!version) return undefined;
-    return {
-      ...candidate,
-      version,
-      installedVersion: installedVersions.get(candidate.name),
-      installed: instances.has(candidate.name),
-      updateAvailable: isNewerVersion(version, installedVersions.get(candidate.name)),
-      instances: instances.get(candidate.name) ?? 0,
-    };
-  }));
-  return resolved.filter((item): item is StorePackageDto => Boolean(item))
-    .sort((left, right) => Number(right.installed) - Number(left.installed) || left.name.localeCompare(right.name));
-}
-
-export function isNewerVersion(candidate: string, installed?: string): boolean {
-  if (!installed || candidate === installed) return false;
-  const next = parseSemver(candidate);
-  const current = parseSemver(installed);
-  if (!next || !current) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (next.numbers[index] !== current.numbers[index]) {
-      return next.numbers[index]! > current.numbers[index]!;
-    }
-  }
-  if (next.prerelease === current.prerelease) return false;
-  if (!next.prerelease) return true;
-  if (!current.prerelease) return false;
-  return next.prerelease.localeCompare(current.prerelease, undefined, { numeric: true }) > 0;
-}
-
-function parseSemver(value: string): { numbers: [number, number, number]; prerelease: string } | undefined {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value);
-  if (!match) return undefined;
-  return {
-    numbers: [Number(match[1]), Number(match[2]), Number(match[3])],
-    prerelease: match[4] ?? "",
-  };
-}
-
-async function latestPackageVersion(registry: string, packageName: string): Promise<string | undefined> {
-  const response = await fetch(new URL(`/${encodeURIComponent(packageName)}`, `${registry}/`), { headers: { accept: "application/json" } });
-  if (!response.ok) return undefined;
-  const metadata = await response.json() as unknown;
-  if (!isRecord(metadata) || !isRecord(metadata["dist-tags"])) return undefined;
-  const latest = metadata["dist-tags"].latest;
-  return typeof latest === "string" ? latest : undefined;
-}
+export { isNewerVersion } from "./store-catalog.js";
 
 function bodyJson(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolveBody, reject) => {

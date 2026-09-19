@@ -7,8 +7,9 @@ import type {
   DynamicPackageManifest,
   ManifestWebSurface,
 } from "./types.js";
+import { INTERFACE_KINDS } from "./types.js";
 
-const KINDS = new Set(["env", "ai", "discovery", "database", "memory", "orchestrator", "agent", "input", "output", "action"]);
+const KINDS = new Set<string>(INTERFACE_KINDS);
 
 export async function loadPackageManifest(packageRoot: string): Promise<DynamicPackageManifest> {
   return parsePackageManifest(await readFile(join(packageRoot, "agent-os.package.yaml"), "utf8"));

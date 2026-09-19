@@ -30,6 +30,17 @@ export function parseDynamicAppConfig(source: string): DynamicAppConfig {
   return { schemaVersion: 1, registry, server: { host, port }, components };
 }
 
+export function serializeDynamicAppConfig(config: DynamicAppConfig): string {
+  return stringifyYaml({
+    ...config,
+    components: config.components.map((component) => {
+      const next = { ...component };
+      if (next.enabled !== false) delete next.enabled;
+      return next;
+    }),
+  }, { lineWidth: 100 });
+}
+
 export async function loadOrCreateConfig(path: string): Promise<{ config: DynamicAppConfig; created: boolean }> {
   try {
     await access(path);
@@ -44,7 +55,7 @@ export async function loadOrCreateConfig(path: string): Promise<{ config: Dynami
 
 export async function writeDynamicAppConfig(path: string, config: DynamicAppConfig): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, stringifyYaml(config, { lineWidth: 100 }), "utf8");
+  await writeFile(path, serializeDynamicAppConfig(config), "utf8");
 }
 
 export function starterConfig(): DynamicAppConfig {
@@ -97,6 +108,7 @@ function parseComponent(value: unknown, index: number): DynamicComponentConfig {
     version: optionalText(value.version, `components[${index}].version`),
     interface: requiredText(value.interface, `components[${index}].interface`),
     instanceId: optionalText(value.instanceId, `components[${index}].instanceId`),
+    enabled: optionalBoolean(value.enabled, `components[${index}].enabled`),
     config,
   };
 }
@@ -130,6 +142,12 @@ function optionalText(value: unknown, path: string): string | undefined {
     throw new Error(`${path} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function optionalBoolean(value: unknown, path: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw new Error(`${path} must be a boolean`);
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

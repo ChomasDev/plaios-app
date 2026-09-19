@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { assertHostVersion, ensureReleaseAgeExclude, readInstalledPackageVersion } from "../src/host-settings.js";
+import { assertHostVersion, ensureReleaseAgeExclude, latestPackageVersion, probeRegistry, readInstalledPackageVersion } from "../src/host-settings.js";
 
 test("rejects unsafe host versions", () => {
   assert.equal(assertHostVersion("0.7.2"), "0.7.2");
@@ -28,4 +28,10 @@ test("reads runtime packages nested under the host install", async () => {
   await mkdir(nested, { recursive: true });
   await writeFile(join(nested, "package.json"), JSON.stringify({ name: "@agent-os/app-dynamic", version: "0.7.2" }));
   assert.equal(await readInstalledPackageVersion(root, "@agent-os/app-dynamic"), "0.7.2");
+});
+
+test("does not fail settings when the registry URL is unreachable", async () => {
+  assert.equal(await probeRegistry("http://127.0.0.1:1"), false);
+  assert.equal(await latestPackageVersion("http://127.0.0.1:1", "agentos"), undefined);
+  assert.equal(await latestPackageVersion("not-a-url", "agentos"), undefined);
 });

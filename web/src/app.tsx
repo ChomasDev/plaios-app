@@ -9,9 +9,10 @@ import {
   type MicrofrontendComponent,
 } from "@agent-os/microfrontend";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, Bot, Braces, BrainCircuit, ChevronRight, CircleGauge, Command, Database, Download, GitBranch, Grid2X2, Layers3, Moon, PackageCheck, PanelLeftClose, PanelLeftOpen, Plug, Radio, RefreshCw, Search, Settings, ShoppingBag, Sparkles, Sun, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { Boxes, Bot, Braces, BrainCircuit, ChevronRight, CircleGauge, Command, Database, Download, GitBranch, Grid2X2, Layers3, Moon, PackageCheck, PanelLeftClose, PanelLeftOpen, Plug, Power, Radio, RefreshCw, Search, Settings, ShoppingBag, Sparkles, Sun, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
-import type { BridgeActionMarker, HostSettingsDto, HostUpdateResult, RuntimeComponentDto, RuntimeSnapshot, StoreMutationResult, StorePackageDto } from "../../src/types.js";
+import type { BridgeActionMarker, HostSettingsDto, HostUpdateResult, RuntimeComponentDto, RuntimeSlotDto, RuntimeSnapshot, RuntimeSwapResult, StoreMutationResult, StorePackageDto } from "../../src/types.js";
+import { CORE_KINDS } from "../../src/types.js";
 
 const kindIcons = { env: Braces, ai: Sparkles, discovery: CircleGauge, database: Database, memory: BrainCircuit, orchestrator: Grid2X2, agent: Bot, input: Radio, output: Plug, action: Wrench } as const;
 type View = "components" | "store" | "settings";
@@ -108,7 +109,7 @@ export function App() {
       <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         {groupComponents(components).map(([kind, entries]) => { const Icon = kindIcons[kind]; return <section key={kind}>
           <p className="mb-2 flex items-center gap-2 px-1 text-[9px] uppercase tracking-[0.16em] text-muted-foreground"><Icon className="size-3" />{kind}</p>
-          <div className="space-y-1">{entries.map((item) => <button key={item.instanceId} type="button" onClick={() => navigateToComponent(item.instanceId)} className={`group flex min-h-10 w-full items-center gap-2.5 border px-2.5 py-2 text-left transition-colors ${view === "components" && item.instanceId === selectedId ? "border-emerald-500/25 bg-emerald-500/[.07] text-foreground shadow-[inset_2px_0_#34d399]" : "border-transparent hover:border-border hover:bg-muted/50"}`}>
+          <div className="space-y-1">{entries.map((item) => <button key={item.instanceId} type="button" onClick={() => navigateToComponent(item.instanceId)} className={`group flex min-h-10 w-full items-center gap-2.5 border px-2.5 py-2 text-left transition-colors ${item.enabled === false ? "opacity-45" : ""} ${view === "components" && item.instanceId === selectedId ? "border-emerald-500/25 bg-emerald-500/[.07] text-foreground shadow-[inset_2px_0_#34d399]" : "border-transparent hover:border-border hover:bg-muted/50"}`}>
             <span className={`size-1.5 shrink-0 ${item.runtimeError ? "bg-destructive" : "bg-emerald-500"}`} /><span className="min-w-0 flex-1"><span className="block truncate font-mono text-[10px] font-medium">{item.id}</span><span className="block truncate font-mono text-[8px] text-muted-foreground">{item.instanceId}</span></span><ChevronRight className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
           </button>)}</div>
         </section>; })}
@@ -207,9 +208,11 @@ function SettingsView() {
   if (settings.isError || !settings.data) return <ErrorPanel title="Settings unavailable" error={settings.error} />;
   const data = settings.data;
   return <div className="p-5 md:p-8 xl:p-10">
-    <div className="max-w-3xl border-b pb-8"><p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Control plane</p><h1 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-4xl">Host settings.</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">Inspect the running shell, point it at a registry, and install a specific <code className="font-mono text-xs">agentos</code> version without SSH.</p></div>
+    <div className="max-w-5xl border-b pb-8"><p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Control plane</p><h1 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-4xl">Runtime graph.</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">Inputs and outputs can be switched on or off. Actions can be disabled or removed. Env, AI, and the other core nodes stay as a single swap each.</p></div>
     {saveRegistry.isError || updateHost.isError ? <div className="mt-5 border border-destructive/30 bg-destructive/5 p-4 text-xs text-destructive">{(saveRegistry.error ?? updateHost.error)?.message}</div> : null}
+    {data.registryReachable === false ? <div className="mt-5 border border-amber-500/30 bg-amber-500/[.06] p-4 text-xs text-amber-500">Registry at <code className="font-mono">{data.registry}</code> is unreachable. You can still change the URL here; store installs and slot swaps need it online.</div> : null}
     {restarting || updateHost.isPending ? <div className="mt-5 border border-emerald-500/25 bg-emerald-500/[.06] p-4 text-xs text-emerald-500">{restarting ? "Restarting control plane…" : "Installing host package…"}</div> : null}
+    <RuntimeSlots settings={data} />
     <section className="mt-8 border bg-card p-5">
       <p className="text-[8px] uppercase tracking-[0.14em] text-muted-foreground">Host package</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
@@ -235,6 +238,141 @@ function SettingsView() {
       <p className="text-[8px] uppercase tracking-[0.14em] text-muted-foreground">Resolved runtime</p>
       <div className="mt-4 space-y-2">{data.runtimePackages.map((item) => <div key={item.name} className="flex items-center justify-between gap-4 border px-3 py-2.5"><span className="truncate font-mono text-xs">{item.name}</span><span className="font-mono text-[10px] text-muted-foreground">v{item.current}</span></div>)}</div>
     </section>
+  </div>;
+}
+
+function RuntimeSlots({ settings }: { settings: HostSettingsDto }) {
+  const queryClient = useQueryClient();
+  const slots = settings.slots ?? [];
+  const core = slots.filter((slot) => CORE_KINDS.includes(slot.kind));
+  const inputs = slots.find((slot) => slot.kind === "input");
+  const outputs = slots.find((slot) => slot.kind === "output");
+  const actions = slots.find((slot) => slot.kind === "action");
+  const [selected, setSelected] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setSelected(Object.fromEntries(core.map((slot) => [slot.kind, slot.current[0]?.packageName ?? slot.options[0]?.packageName ?? ""])));
+  }, [settings]);
+  async function refresh() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["runtime"] }),
+      queryClient.invalidateQueries({ queryKey: ["store"] }),
+      queryClient.invalidateQueries({ queryKey: ["component-data"] }),
+    ]);
+  }
+  const swap = useMutation({
+    mutationFn: ({ kind, packageName, version }: { kind: string; packageName: string; version: string }) =>
+      requestJson<RuntimeSwapResult>("/api/settings/swap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind, packageName, version }),
+      }),
+    onSuccess: refresh,
+  });
+  const toggle = useMutation({
+    mutationFn: ({ instanceId, enabled }: { instanceId: string; enabled: boolean }) =>
+      requestJson<RuntimeSnapshot>("/api/settings/component", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instanceId, enabled }),
+      }),
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    mutationFn: (instanceId: string) =>
+      requestJson<RuntimeSnapshot>("/api/settings/component", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instanceId }),
+      }),
+    onSuccess: refresh,
+  });
+  const busy = swap.isPending || toggle.isPending || remove.isPending;
+  const error = swap.error ?? toggle.error ?? remove.error;
+  if (slots.length === 0) return null;
+  return <section className="mt-8">
+    <p className="text-[8px] uppercase tracking-[0.14em] text-muted-foreground">Message graph</p>
+    {error ? <div className="mt-4 border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">{error.message}</div> : null}
+    <div className="agentos-runtime-graph mt-5">
+      <GraphColumn kind="input" title="Inputs" hint="Enable the channels that can talk to the agent" slot={inputs} busy={busy} togglingId={toggle.variables?.instanceId} onToggle={(instanceId, enabled) => toggle.mutate({ instanceId, enabled })} />
+      <div className="agentos-graph-edge" aria-hidden="true" />
+      <div className="min-w-0 space-y-4">
+        <div className="border bg-card p-4">
+          <p className="text-[8px] uppercase tracking-[0.14em] text-muted-foreground">Core</p>
+          <p className="mt-1 text-[11px] leading-5 text-muted-foreground">One package per node. Swap to replace it.</p>
+          <div className="mt-4 space-y-2">{core.map((slot) => {
+            const value = selected[slot.kind] ?? "";
+            const option = slot.options.find((item) => item.packageName === value);
+            const currentName = slot.current[0]?.packageName;
+            const unchanged = Boolean(currentName) && currentName === value;
+            const Icon = kindIcons[slot.kind];
+            return <div key={slot.kind} className="border bg-background px-3 py-3">
+              <div className="flex items-center gap-2">
+                <span className={`size-1.5 ${slot.current.length ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+                <Icon className="size-3.5 text-muted-foreground" />
+                <p className="text-[8px] uppercase tracking-[0.14em] text-muted-foreground">{slot.kind}</p>
+              </div>
+              <p className="mt-2 truncate font-mono text-[11px]">{currentName ? `${currentName}@${slot.current[0]?.version}` : "Not mounted"}</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <select value={value} onChange={(event) => setSelected((current) => ({ ...current, [slot.kind]: event.target.value }))} className="h-9 min-w-0 flex-1 border bg-background px-2 font-mono text-[10px] outline-none focus:border-emerald-500/50">
+                  {slot.options.length === 0 ? <option value="">No packages</option> : slot.options.map((item) => <option key={item.packageName} value={item.packageName}>{item.packageName}@{item.version}</option>)}
+                </select>
+                <button type="button" disabled={busy || !option || unchanged} onClick={() => option && swap.mutate({ kind: slot.kind, packageName: option.packageName, version: option.version })} className="inline-flex h-9 items-center justify-center gap-2 border px-3 font-mono text-[8px] uppercase tracking-[0.08em] disabled:opacity-50">{swap.isPending && swap.variables?.kind === slot.kind ? "Switching" : "Swap"}</button>
+              </div>
+            </div>;
+          })}</div>
+        </div>
+        <GraphColumn kind="action" title="Actions" hint="Disable to keep the package, or delete to remove it" slot={actions} busy={busy} removable togglingId={toggle.variables?.instanceId} removingId={remove.variables} onToggle={(instanceId, enabled) => toggle.mutate({ instanceId, enabled })} onRemove={(instanceId) => { if (window.confirm(`Delete ${instanceId} from the runtime?`)) remove.mutate(instanceId); }} />
+      </div>
+      <div className="agentos-graph-edge" aria-hidden="true" />
+      <GraphColumn kind="output" title="Outputs" hint="Enable the channels the agent can answer on" slot={outputs} busy={busy} togglingId={toggle.variables?.instanceId} onToggle={(instanceId, enabled) => toggle.mutate({ instanceId, enabled })} />
+    </div>
+  </section>;
+}
+
+function GraphColumn({
+  kind,
+  title,
+  hint,
+  slot,
+  busy,
+  removable = false,
+  togglingId,
+  removingId,
+  onToggle,
+  onRemove,
+}: {
+  kind: RuntimeSlotDto["kind"];
+  title: string;
+  hint: string;
+  slot?: RuntimeSlotDto;
+  busy: boolean;
+  removable?: boolean;
+  togglingId?: string;
+  removingId?: string;
+  onToggle(instanceId: string, enabled: boolean): void;
+  onRemove?(instanceId: string): void;
+}) {
+  const Icon = kindIcons[kind];
+  const items = slot?.current ?? [];
+  return <div className="min-w-0 border bg-card p-4">
+    <p className="flex items-center gap-2 text-[8px] uppercase tracking-[0.14em] text-muted-foreground"><Icon className="size-3.5" />{title}</p>
+    <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{hint}</p>
+    <div className="mt-4 space-y-2">{items.length === 0 ? <div className="border border-dashed px-3 py-6 text-center font-mono text-[10px] text-muted-foreground">None mounted</div> : items.map((item) => {
+      const enabled = item.enabled !== false;
+      return <div key={item.instanceId} className={`border bg-background px-3 py-3 ${enabled ? "" : "opacity-55"}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 font-mono text-[11px]"><span className={`size-1.5 ${enabled ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />{item.interfaceId}</p>
+            <p className="mt-1 truncate font-mono text-[9px] text-muted-foreground">{item.packageName}@{item.version}</p>
+          </div>
+          <div className="flex shrink-0 gap-1">
+            <button type="button" disabled={busy} onClick={() => onToggle(item.instanceId, !enabled)} className={`inline-flex h-8 items-center gap-1.5 border px-2 font-mono text-[8px] uppercase tracking-[0.08em] disabled:opacity-50 ${enabled ? "border-emerald-500/30 text-emerald-500" : "text-muted-foreground"}`}><Power className="size-3" />{togglingId === item.instanceId ? "…" : enabled ? "On" : "Off"}</button>
+            {removable ? <button type="button" disabled={busy} onClick={() => onRemove?.(item.instanceId)} aria-label={`Delete ${item.instanceId}`} className="grid size-8 place-items-center border border-destructive/35 text-destructive disabled:opacity-50">{removingId === item.instanceId ? <RefreshCw className="size-3 animate-spin" /> : <Trash2 className="size-3" />}</button> : null}
+          </div>
+        </div>
+      </div>;
+    })}</div>
   </div>;
 }
 

@@ -57,7 +57,7 @@ export class AgentRuntime {
 
   private async handle(message: InputMessage, history: ConversationHistory): Promise<void> {
     const contextualized = await history.contextualize(message);
-    await history.rememberUser(message);
+    await history.rememberUser(contextualized);
     const decision = await this.options.orchestrator.orchestrate(contextualized, this.options.outputs);
     await persistMemoryProposals(this.options.memory, message, decision.memoryProposals);
     const output = this.options.outputs.find(({ channel }) => channel === decision.outputChannel);
@@ -65,7 +65,11 @@ export class AgentRuntime {
 
     const response = await this.options.agentLoop.run(
       addDeliveryContext(contextualized, decision.outputChannel),
-      { capabilityIds: decision.capabilityIds, stream: this.options.stream ?? true },
+      {
+        capabilityIds: decision.capabilityIds,
+        stream: this.options.stream ?? true,
+        bypassModel: decision.bypassModel,
+      },
     );
     const additional = (decision.additionalOutputs ?? []).map((route) => {
       const destination = this.options.outputs.find(({ channel }) => channel === route.outputChannel);

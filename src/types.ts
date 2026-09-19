@@ -10,11 +10,37 @@ export type InterfaceKind =
   | "output"
   | "action";
 
+export const INTERFACE_KINDS: readonly InterfaceKind[] = [
+  "env",
+  "ai",
+  "discovery",
+  "database",
+  "memory",
+  "orchestrator",
+  "agent",
+  "input",
+  "output",
+  "action",
+];
+
+export const CORE_KINDS: readonly InterfaceKind[] = [
+  "env",
+  "ai",
+  "discovery",
+  "database",
+  "memory",
+  "orchestrator",
+  "agent",
+];
+
+export const TOGGLE_KINDS: readonly InterfaceKind[] = ["input", "output", "action"];
+
 export interface DynamicComponentConfig {
   package: string;
   version?: string;
   interface: string;
   instanceId?: string;
+  enabled?: boolean;
   config?: Record<string, unknown>;
 }
 
@@ -73,6 +99,7 @@ export interface RuntimeComponentDto {
   config: Record<string, unknown>;
   web?: RuntimeWebSurface;
   hasDataBridge: boolean;
+  enabled: boolean;
   runtimeError?: string;
 }
 
@@ -86,6 +113,24 @@ export interface StoreMutationResult extends RuntimeSnapshot {
   restarting?: true;
 }
 
+export interface RuntimeSlotOptionDto {
+  packageName: string;
+  version: string;
+  description?: string;
+}
+
+export interface RuntimeSlotDto {
+  kind: InterfaceKind;
+  current: Array<{
+    instanceId: string;
+    packageName: string;
+    version: string;
+    interfaceId: string;
+    enabled: boolean;
+  }>;
+  options: RuntimeSlotOptionDto[];
+}
+
 export interface HostSettingsDto {
   configPath: string;
   registry: string;
@@ -97,6 +142,14 @@ export interface HostSettingsDto {
     updateAvailable: boolean;
   };
   runtimePackages: Array<{ name: string; current: string }>;
+  slots: RuntimeSlotDto[];
+  registryReachable: boolean;
+}
+
+export interface RuntimeSwapResult extends RuntimeSnapshot {
+  kind: InterfaceKind;
+  packageName: string;
+  version: string;
 }
 
 export interface HostUpdateResult {

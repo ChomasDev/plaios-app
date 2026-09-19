@@ -13,19 +13,24 @@ import { AgentRuntime } from "./agent-runtime.js";
 import { writeDynamicAppConfig } from "./config.js";
 import { readHostSettings, type HostSettingsDto } from "./host-settings.js";
 import {
+  assertPackageName,
   installRuntimePackage,
   installedPackageRoot,
   uninstallRuntimePackage,
 } from "./installer.js";
 import { loadPackageManifest } from "./manifest.js";
+import { buildRuntimeSlots, planKindReplacement, replaceKindComponents } from "./runtime-slots.js";
+import { searchRegistry } from "./store-catalog.js";
 import type {
   BridgeActionMarker,
   DynamicAppConfig,
   DynamicComponentConfig,
   DynamicManifestInterface,
+  InterfaceKind,
   RuntimeComponentDto,
   RuntimeSnapshot,
 } from "./types.js";
+import { INTERFACE_KINDS, TOGGLE_KINDS } from "./types.js";
 
 type RuntimeModule = Record<string, unknown>;
 type Constructor = new (options?: Record<string, unknown>) => unknown;
@@ -135,6 +140,24 @@ export class DynamicRuntime {
     }
 
     for (const definition of definitions) definition.version = manifest.version;
+    const existingIds = new Set(this.config.components.map(({ instanceId }) => instanceId));
+    const configuredInterfaces = new Set(definitions.map(({ interface: interfaceId }) => interfaceId));
+    for (const manifestInterface of manifest.interfaces.filter(
+      ({ id, startup }) => !configuredInterfaces.has(id) && startup?.when !== "manual",
+    )) {
+      const baseId = `${manifestInterface.kind}:${manifest.id}`;
+      let instanceId = baseId;
+      let suffix = 2;
+      while (existingIds.has(instanceId)) instanceId = `${baseId}:${suffix++}`;
+      existingIds.add(instanceId);
+      this.config.components.push({
+        package: packageName,
+        version: manifest.version,
+        interface: manifestInterface.id,
+        instanceId,
+        config: manifestDefaults(manifestInterface),
+      });
+    }
     await writeDynamicAppConfig(this.configPath, this.config);
     await this.reload();
     return this.snapshot();
@@ -148,13 +171,108 @@ export class DynamicRuntime {
     };
   }
 
-  hostSettings(): Promise<HostSettingsDto> {
-    return readHostSettings({
+  async hostSettings(): Promise<HostSettingsDto> {
+    const settings = await readHostSettings({
       projectRoot: this.projectRoot,
       configPath: this.configPath,
       registry: this.config.registry,
       server: this.config.server,
     });
+    let catalog: Awaited<ReturnType<typeof searchRegistry>> = [];
+    try {
+      catalog = await searchRegistry(this.config.registry);
+    } catch (error) {
+      console.warn("[dynamic] Could not load registry slots:", error instanceof Error ? error.message : error);
+    }
+    return {
+      ...settings,
+      slots: buildRuntimeSlots(
+        this.components.map(({ descriptor, definition }) => ({
+          kind: descriptor.kind,
+          instanceId: descriptor.instanceId,
+          packageName: descriptor.packageName,
+          version: descriptor.version,
+          interfaceId: descriptor.id,
+          config: definition.config,
+          enabled: definition.enabled !== false,
+        })),
+        catalog,
+      ),
+    };
+  }
+
+  async swapKind(kind: InterfaceKind, packageName: string, version = "latest"): Promise<RuntimeSnapshot> {
+    if (!INTERFACE_KINDS.includes(kind)) throw new Error(`Unknown interface kind: ${kind}`);
+    assertPackageName(packageName);
+    const existing = this.components.filter(({ descriptor }) => descriptor.kind === kind);
+    const samePackage = existing.length > 0 && existing.every(({ definition }) => definition.package === packageName);
+    const sameVersion = version === "latest" || existing.every(({ definition }) => definition.version === version);
+    if (samePackage && sameVersion) return this.snapshot();
+    await installRuntimePackage(this.runtimeRoot, this.config.registry, packageName, version);
+    const manifest = await loadPackageManifest(installedPackageRoot(this.runtimeRoot, packageName));
+    const interfaces = manifest.interfaces.filter((item) => item.kind === kind && item.startup?.when !== "manual");
+    if (interfaces.length === 0) {
+      throw new Error(`${packageName}@${manifest.version} does not provide a ${kind} interface`);
+    }
+    const replacements = planKindReplacement(
+      existing.map(({ descriptor, definition }) => ({
+        kind: descriptor.kind,
+        instanceId: descriptor.instanceId,
+        packageName: descriptor.packageName,
+        version: descriptor.version,
+        interfaceId: descriptor.id,
+        enabled: definition.enabled,
+        config: definition.config,
+      })),
+      interfaces,
+      packageName,
+      manifest.version,
+    );
+    const kindOf = new Map(this.components.map(({ definition, descriptor }) => [definition.instanceId ?? "", descriptor.kind]));
+    const previousPackages = new Set(this.config.components.map((component) => component.package));
+    this.config.components = replaceKindComponents(this.config.components, kindOf, kind, replacements);
+    assignUniqueInstanceIds(this.config.components);
+    await writeDynamicAppConfig(this.configPath, this.config);
+    for (const previous of previousPackages) {
+      if (!this.config.components.some((component) => component.package === previous)) {
+        await uninstallRuntimePackage(this.runtimeRoot, previous).catch((error: unknown) => {
+          console.warn(`[dynamic] Could not remove unused package ${previous}:`, error instanceof Error ? error.message : error);
+        });
+      }
+    }
+    await this.reload();
+    return this.snapshot();
+  }
+
+  async setComponentEnabled(instanceId: string, enabled: boolean): Promise<RuntimeSnapshot> {
+    const component = this.get(instanceId);
+    if (!TOGGLE_KINDS.includes(component.descriptor.kind)) {
+      throw new Error("Only input, output, and action instances can be enabled or disabled");
+    }
+    const definition = this.config.components.find((item) => item.instanceId === instanceId);
+    if (!definition) throw new Error(`Unknown component instance: ${instanceId}`);
+    definition.enabled = enabled;
+    await writeDynamicAppConfig(this.configPath, this.config);
+    await this.reload();
+    return this.snapshot();
+  }
+
+  async removeComponent(instanceId: string): Promise<RuntimeSnapshot> {
+    const component = this.get(instanceId);
+    if (component.descriptor.kind !== "action") {
+      throw new Error("Only action instances can be removed from settings");
+    }
+    const packageName = component.definition.package;
+    await closeInstance(component.instance);
+    this.config.components = this.config.components.filter((item) => item.instanceId !== instanceId);
+    await writeDynamicAppConfig(this.configPath, this.config);
+    if (!this.config.components.some((item) => item.package === packageName)) {
+      await uninstallRuntimePackage(this.runtimeRoot, packageName).catch((error: unknown) => {
+        console.warn(`[dynamic] Could not remove unused package ${packageName}:`, error instanceof Error ? error.message : error);
+      });
+    }
+    await this.reload();
+    return this.snapshot();
   }
 
   async updateRegistry(registry: string): Promise<HostSettingsDto> {
@@ -226,22 +344,25 @@ export class DynamicRuntime {
     }
     let instance: unknown;
     let runtimeError: string | undefined;
-    try {
-      const shared = this.components.find((component) =>
-        component.definition.package === definition.package &&
-        component.manifestInterface.className === manifestInterface.className &&
-        component.instance,
-      );
-      if (shared) {
-        instance = shared.instance;
-      } else {
-        const runtimeEntry = resolvePackageEntry(packageRoot, packageJson, manifestInterface.entry);
-        const module = await import(versionedModuleUrl(runtimeEntry, manifest.version)) as RuntimeModule;
-        instance = instantiate(module, manifestInterface, this.componentOptions(manifestInterface, definition));
+    const enabled = definition.enabled !== false;
+    if (enabled) {
+      try {
+        const shared = this.components.find((component) =>
+          component.definition.package === definition.package &&
+          component.manifestInterface.className === manifestInterface.className &&
+          component.instance,
+        );
+        if (shared) {
+          instance = shared.instance;
+        } else {
+          const runtimeEntry = resolvePackageEntry(packageRoot, packageJson, manifestInterface.entry);
+          const module = await import(versionedModuleUrl(runtimeEntry, manifest.version)) as RuntimeModule;
+          instance = instantiate(module, manifestInterface, this.componentOptions(manifestInterface, definition));
+        }
+      } catch (error) {
+        runtimeError = error instanceof Error ? error.message : String(error);
+        console.warn(`[dynamic] ${definition.instanceId} is not active: ${runtimeError}`);
       }
-    } catch (error) {
-      runtimeError = error instanceof Error ? error.message : String(error);
-      console.warn(`[dynamic] ${definition.instanceId} is not active: ${runtimeError}`);
     }
     const web = manifestInterface.web
       ? {
@@ -268,6 +389,7 @@ export class DynamicRuntime {
         config: definition.config ?? {},
         web,
         hasDataBridge: hasMicrofrontendData(instance),
+        enabled,
         runtimeError,
       },
     };
@@ -341,7 +463,7 @@ export class DynamicRuntime {
       // A package may expose a capability from another live interface. Cronjob,
       // for example, must use the same object for its input listener and its
       // management tool so newly-created schedules become active immediately.
-      if (isCapability(instance)) await discovery.register(instance);
+      if (descriptor.enabled !== false && isCapability(instance)) await discovery.register(instance);
     }
   }
 
@@ -362,6 +484,18 @@ export class DynamicRuntime {
     });
     this.agentRuntime.start();
     console.log(`[dynamic] message runtime started (${inputs.map(({ channel }) => channel).join(", ")})`);
+  }
+}
+
+function assignUniqueInstanceIds(components: DynamicComponentConfig[]): void {
+  const used = new Set<string>();
+  for (const component of components) {
+    const base = component.instanceId ?? `${component.interface}:1`;
+    let instanceId = base;
+    let suffix = 2;
+    while (used.has(instanceId)) instanceId = `${base}:${suffix++}`;
+    component.instanceId = instanceId;
+    used.add(instanceId);
   }
 }
 

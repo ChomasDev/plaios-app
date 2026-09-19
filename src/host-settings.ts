@@ -30,7 +30,8 @@ export async function readHostSettings(options: {
     (await readPackageVersion(join(options.projectRoot, "node_modules", HOST_PACKAGE, "package.json"))) ??
     (await readDeclaredHostVersion(join(options.projectRoot, "package.json"))) ??
     "unknown";
-  const latest = await latestPackageVersion(options.registry, HOST_PACKAGE);
+  const reachable = await probeRegistry(options.registry);
+  const latest = reachable ? await latestPackageVersion(options.registry, HOST_PACKAGE) : undefined;
   const runtimePackages: HostSettingsDto["runtimePackages"] = [];
   for (const name of RUNTIME_PACKAGES) {
     const version = await readInstalledPackageVersion(options.projectRoot, name);
@@ -47,6 +48,8 @@ export async function readHostSettings(options: {
       updateAvailable: Boolean(latest && latest !== current),
     },
     runtimePackages,
+    slots: [],
+    registryReachable: reachable,
   };
 }
 
@@ -69,13 +72,30 @@ export function scheduleHostRestart(): void {
   setTimeout(() => process.exit(1), 400);
 }
 
-async function latestPackageVersion(registry: string, packageName: string): Promise<string | undefined> {
-  const response = await fetch(new URL(`/${encodeURIComponent(packageName)}`, `${registry}/`), {
-    headers: { accept: "application/json" },
-  });
-  if (!response.ok) return undefined;
-  const metadata = await response.json() as { "dist-tags"?: { latest?: unknown } };
-  return typeof metadata["dist-tags"]?.latest === "string" ? metadata["dist-tags"].latest : undefined;
+export async function probeRegistry(registry: string): Promise<boolean> {
+  try {
+    const response = await fetch(new URL("/-/ping", `${registry}/`), {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(4000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function latestPackageVersion(registry: string, packageName: string): Promise<string | undefined> {
+  try {
+    const response = await fetch(new URL(`/${encodeURIComponent(packageName)}`, `${registry}/`), {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) return undefined;
+    const metadata = await response.json() as { "dist-tags"?: { latest?: unknown } };
+    return typeof metadata["dist-tags"]?.latest === "string" ? metadata["dist-tags"].latest : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function readInstalledPackageVersion(projectRoot: string, packageName: string): Promise<string | undefined> {
