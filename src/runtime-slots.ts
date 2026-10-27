@@ -98,7 +98,7 @@ export function replaceKindComponents(
   return result;
 }
 
-function manifestDefaults(manifestInterface: DynamicManifestInterface): Record<string, unknown> {
+export function manifestDefaults(manifestInterface: DynamicManifestInterface): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const item of manifestInterface.config ?? []) {
     if (typeof item.key === "string" && Object.hasOwn(item, "default")) result[item.key] = item.default;

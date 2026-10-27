@@ -11,6 +11,7 @@ import type {
 import { ConversationHistory } from "./agent-conversation-history.js";
 import { addDeliveryContext } from "./agent-delivery-context.js";
 import { persistMemoryProposals } from "./agent-memory-proposals.js";
+import type { AgentRunDto } from "./types.js";
 
 const INPUT_RESTART_DELAY_MS = 1_000;
 
@@ -21,6 +22,7 @@ export interface AgentRuntimeOptions {
   orchestrator: Orchestrator;
   agentLoop: AgentLoop;
   stream?: boolean;
+  onRun?: (run: AgentRunDto) => void;
 }
 
 export class AgentRuntime {
@@ -47,8 +49,7 @@ export class AgentRuntime {
   async stop(): Promise<void> {
     if (!this.listening && !this.running) return;
     this.listening = false;
-    const inputs = uniqueByIdentity(this.options.inputs);
-    const results = await Promise.allSettled(inputs.map((input) => input.stop()));
+    const results = await Promise.allSettled([...new Set(this.options.inputs)].map((input) => input.stop()));
     await this.running?.catch(() => undefined);
     this.running = undefined;
     const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
@@ -56,6 +57,22 @@ export class AgentRuntime {
   }
 
   private async handle(message: InputMessage, history: ConversationHistory): Promise<void> {
+    if (!this.options.onRun) return this.process(message, history);
+    const started = Date.now();
+    const run: AgentRunDto = { at: new Date(started).toISOString(), channel: message.channel, capabilityIds: [], durationMs: 0, ok: true };
+    try {
+      await this.process(message, history, run);
+    } catch (error) {
+      run.ok = false;
+      run.error = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      run.durationMs = Date.now() - started;
+      this.options.onRun(run);
+    }
+  }
+
+  private async process(message: InputMessage, history: ConversationHistory, run?: AgentRunDto): Promise<void> {
     const contextualized = await history.contextualize(message);
     await history.rememberUser(contextualized);
     const confirmation = protocolRememberedReply(contextualized);
@@ -63,17 +80,22 @@ export class AgentRuntime {
       const output = this.options.outputs.find(({ channel }) => channel === message.channel)
         ?? this.options.outputs[0];
       if (!output) throw new Error("Agent runtime requires at least one output");
+      if (run) run.outputChannel = output.channel;
       await output.write(confirmation);
       await history.rememberAssistant(message, confirmation);
       return;
     }
     const decision = await this.options.orchestrator.orchestrate(contextualized, this.options.outputs);
+    if (run) {
+      run.outputChannel = decision.outputChannel;
+      run.capabilityIds = [...decision.capabilityIds];
+    }
     await persistMemoryProposals(this.options.memory, message, decision.memoryProposals);
     const output = this.options.outputs.find(({ channel }) => channel === decision.outputChannel);
     if (!output) throw new Error(`Orchestrator selected unavailable output "${decision.outputChannel}"`);
 
     const response = await this.options.agentLoop.run(
-      addDeliveryContext(contextualized, decision.outputChannel),
+      addDeliveryContext(contextualized, output),
       {
         capabilityIds: decision.capabilityIds,
         stream: this.options.stream ?? true,
@@ -138,10 +160,6 @@ async function* capture(stream: AsyncIterable<string>, chunks: string[]): AsyncG
     chunks.push(chunk);
     yield chunk;
   }
-}
-
-function uniqueByIdentity<T extends object>(values: readonly T[]): T[] {
-  return [...new Set(values)];
 }
 
 function protocolRememberedReply(message: InputMessage): string | undefined {

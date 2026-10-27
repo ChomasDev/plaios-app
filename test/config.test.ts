@@ -65,3 +65,24 @@ test("ships a useful starter graph and parses start overrides", () => {
     install: false,
   });
 });
+
+test("moves components of the misspelled jev orchestrator package to the renamed one", () => {
+  const config = parseDynamicAppConfig(`
+schemaVersion: 1
+registry: http://localhost:4873
+components:
+  - package: "@agent-os/jev-orhcestator"
+    version: 0.1.9
+    interface: jev-orhcestator.orchestrator
+    instanceId: orchestrator:default
+    config: { mode: fast }
+`);
+  assert.deepEqual(config.components[0], {
+    package: "@agent-os/jev-orchestrator",
+    version: "latest",
+    interface: "jev-orchestrator.orchestrator",
+    instanceId: "orchestrator:default",
+    enabled: undefined,
+    config: { mode: "fast" },
+  });
+});

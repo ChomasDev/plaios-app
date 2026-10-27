@@ -12,16 +12,16 @@ test("replaces every component of a kind in place", () => {
       { package: "@agent-os/telegram", interface: "telegram.output", instanceId: "output:telegram" },
     ],
     new Map([
-      ["ai:codex", "ai"],
+      ["ai:codex", "system2"],
       ["orchestrator:default", "orchestrator"],
       ["output:telegram", "output"],
     ]),
     "orchestrator",
-    [{ package: "@agent-os/jev-orhcestator", interface: "jev-orhcestator.orchestrator", instanceId: "orchestrator:default" }],
+    [{ package: "@agent-os/jev-orchestrator", interface: "jev-orchestrator.orchestrator", instanceId: "orchestrator:default" }],
   );
   assert.deepEqual(next.map((item) => item.package), [
     "@agent-os/codex",
-    "@agent-os/jev-orhcestator",
+    "@agent-os/jev-orchestrator",
     "@agent-os/telegram",
   ]);
   assert.equal(next[1]?.instanceId, "orchestrator:default");
@@ -29,7 +29,7 @@ test("replaces every component of a kind in place", () => {
 
 test("keeps instance ids and overlapping config when planning a swap", () => {
   const iface = {
-    id: "jev-orhcestator.orchestrator",
+    id: "jev-orchestrator.orchestrator",
     kind: "orchestrator",
     name: "Jev",
     entry: ".",
@@ -46,13 +46,13 @@ test("keeps instance ids and overlapping config when planning a swap", () => {
       config: { maxCapabilities: 20, fastPath: true },
     }],
     [iface],
-    "@agent-os/jev-orhcestator",
+    "@agent-os/jev-orchestrator",
     "0.1.2",
   );
   assert.deepEqual(planned, [{
-    package: "@agent-os/jev-orhcestator",
+    package: "@agent-os/jev-orchestrator",
     version: "0.1.2",
-    interface: "jev-orhcestator.orchestrator",
+    interface: "jev-orchestrator.orchestrator",
     instanceId: "orchestrator:default",
     config: { maxCapabilities: 20, fastPath: true },
   }]);
@@ -69,16 +69,16 @@ test("builds slots from mounted components and registry keywords", () => {
     }],
     [
       { name: "@agent-os/orchestrator-default", version: "0.1.2", keywords: ["orchestrator"] },
-      { name: "@agent-os/jev-orhcestator", version: "0.1.2", description: "Jev router", keywords: ["orchestrator"] },
+      { name: "@agent-os/jev-orchestrator", version: "0.1.2", description: "Jev router", keywords: ["orchestrator"] },
       { name: "@agent-os/codex", version: "0.1.2", keywords: ["ai"] },
     ],
   );
   const orchestrator = slots.find((slot) => slot.kind === "orchestrator");
-  const ai = slots.find((slot) => slot.kind === "ai");
+  const ai = slots.find((slot) => slot.kind === "system2");
   assert.equal(orchestrator?.current[0]?.packageName, "@agent-os/orchestrator-default");
   assert.equal(orchestrator?.current[0]?.enabled, true);
   assert.deepEqual(orchestrator?.options.map((item) => item.packageName), [
-    "@agent-os/jev-orhcestator",
+    "@agent-os/jev-orchestrator",
     "@agent-os/orchestrator-default",
   ]);
   assert.equal(ai?.current.length, 0);

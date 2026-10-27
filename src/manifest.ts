@@ -7,7 +7,7 @@ import type {
   DynamicPackageManifest,
   ManifestWebSurface,
 } from "./types.js";
-import { INTERFACE_KINDS } from "./types.js";
+import { INTERFACE_KINDS, isRecord } from "./types.js";
 
 const KINDS = new Set<string>(INTERFACE_KINDS);
 
@@ -35,7 +35,7 @@ export function parsePackageManifest(source: string): DynamicPackageManifest {
 
 function parseInterface(value: unknown, index: number): DynamicManifestInterface {
   if (!isRecord(value)) throw new Error(`interfaces[${index}] must be an object`);
-  const kind = text(value.kind, `interfaces[${index}].kind`);
+  const kind = systemKind(text(value.kind, `interfaces[${index}].kind`));
   if (!KINDS.has(kind)) throw new Error(`Invalid interface kind: ${kind}`);
   return {
     id: text(value.id, `interfaces[${index}].id`),
@@ -45,10 +45,21 @@ function parseInterface(value: unknown, index: number): DynamicManifestInterface
     export: optionalText(value.export, `interfaces[${index}].export`) ?? ".",
     className: optionalText(value.className, `interfaces[${index}].className`),
     description: optionalText(value.description, `interfaces[${index}].description`),
-    web: parseWeb(value.web, index),
+    web: parseWeb(value.web, index, kind),
     config: Array.isArray(value.config) ? value.config.filter(isRecord) : undefined,
+    required: kinds(value.required),
+    optional: kinds(value.optional),
     startup: parseStartup(value.startup, index),
   };
+}
+
+// Packages published before System 1/2 declare the generative model as `ai`.
+function systemKind(kind: string): string {
+  return kind === "ai" ? "system2" : kind;
+}
+
+function kinds(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string").map(systemKind) : undefined;
 }
 
 function parseStartup(value: unknown, index: number): DynamicManifestInterface["startup"] {
@@ -59,8 +70,9 @@ function parseStartup(value: unknown, index: number): DynamicManifestInterface["
   return { when: value.when as "always" | "ifConfigured" | "manual" };
 }
 
-function parseWeb(value: unknown, index: number): ManifestWebSurface | undefined {
-  if (value === undefined) return undefined;
+/** Every interface has a page microfrontend; without `web:` it is expected at the conventional `./web/<kind>` export. */
+function parseWeb(value: unknown, index: number, kind: string): ManifestWebSurface {
+  if (value === undefined) return { entry: `./web/${kind}`, export: "default", styles: "./web/styles.css", conventional: true };
   if (!isRecord(value)) throw new Error(`interfaces[${index}].web must be an object`);
   return {
     entry: text(value.entry, `interfaces[${index}].web.entry`),
@@ -79,8 +91,4 @@ function optionalText(value: unknown, path: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${path} must be a non-empty string`);
   return value.trim();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

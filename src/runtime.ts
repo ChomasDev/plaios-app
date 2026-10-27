@@ -10,8 +10,11 @@ import type {
 } from "@agent-os/core";
 
 import { AgentRuntime } from "./agent-runtime.js";
+import { CapabilityDocsCapability, type CapabilityDocsEntry } from "./capability-docs.js";
+import { Telemetry } from "./telemetry.js";
+import { WebChat } from "./web-chat.js";
 import { writeDynamicAppConfig } from "./config.js";
-import { readHostSettings, type HostSettingsDto } from "./host-settings.js";
+import { readHostSettings } from "./host-settings.js";
 import {
   assertPackageName,
   installRuntimePackage,
@@ -19,16 +22,21 @@ import {
   uninstallRuntimePackage,
 } from "./installer.js";
 import { loadPackageManifest } from "./manifest.js";
-import { buildRuntimeSlots, planKindReplacement, replaceKindComponents } from "./runtime-slots.js";
+import { buildRuntimeSlots, manifestDefaults, planKindReplacement, replaceKindComponents } from "./runtime-slots.js";
 import { searchRegistry } from "./store-catalog.js";
 import type {
   BridgeActionMarker,
   DynamicAppConfig,
   DynamicComponentConfig,
   DynamicManifestInterface,
+  DynamicPackageManifest,
+  HostSettingsDto,
   InterfaceKind,
+  ManifestWebSurface,
   RuntimeComponentDto,
   RuntimeSnapshot,
+  RuntimeWebSurface,
+  OpenUIComponentSpec,
 } from "./types.js";
 import { INTERFACE_KINDS, TOGGLE_KINDS } from "./types.js";
 
@@ -55,6 +63,8 @@ export class DynamicRuntime {
   private components: LoadedComponent[] = [];
   private readonly actions = new Map<string, Map<string, RegisteredAction>>();
   private agentRuntime?: AgentRuntime;
+  private webChat?: WebChat;
+  readonly telemetry = new Telemetry();
 
   constructor(
     readonly projectRoot: string,
@@ -87,21 +97,13 @@ export class DynamicRuntime {
     await installRuntimePackage(this.runtimeRoot, this.config.registry, packageName, version);
     const packageRoot = installedPackageRoot(this.runtimeRoot, packageName);
     const manifest = await loadPackageManifest(packageRoot);
-    const existingIds = new Set(this.config.components.map(({ instanceId }) => instanceId));
-    for (const manifestInterface of manifest.interfaces.filter(({ startup }) => startup?.when !== "manual")) {
-      const baseId = `${manifestInterface.kind}:${manifest.id}`;
-      let instanceId = baseId;
-      let suffix = 2;
-      while (existingIds.has(instanceId)) instanceId = `${baseId}:${suffix++}`;
-      existingIds.add(instanceId);
-      this.config.components.push({
-        package: packageName,
-        version: manifest.version,
-        interface: manifestInterface.id,
-        instanceId,
-        config: manifestDefaults(manifestInterface),
-      });
+    const packageJson = await readPackageJson(packageRoot);
+    const missing = manifest.interfaces.map((item) => resolveWebSurface(packageRoot, packageJson, item).webError).find(Boolean);
+    if (missing) {
+      await uninstallRuntimePackage(this.runtimeRoot, packageName);
+      throw new Error(`${packageName} cannot be installed. ${missing}`);
     }
+    this.addInterfaces(packageName, manifest, new Set());
     await writeDynamicAppConfig(this.configPath, this.config);
     await this.reload();
     return this.snapshot();
@@ -140,24 +142,7 @@ export class DynamicRuntime {
     }
 
     for (const definition of definitions) definition.version = manifest.version;
-    const existingIds = new Set(this.config.components.map(({ instanceId }) => instanceId));
-    const configuredInterfaces = new Set(definitions.map(({ interface: interfaceId }) => interfaceId));
-    for (const manifestInterface of manifest.interfaces.filter(
-      ({ id, startup }) => !configuredInterfaces.has(id) && startup?.when !== "manual",
-    )) {
-      const baseId = `${manifestInterface.kind}:${manifest.id}`;
-      let instanceId = baseId;
-      let suffix = 2;
-      while (existingIds.has(instanceId)) instanceId = `${baseId}:${suffix++}`;
-      existingIds.add(instanceId);
-      this.config.components.push({
-        package: packageName,
-        version: manifest.version,
-        interface: manifestInterface.id,
-        instanceId,
-        config: manifestDefaults(manifestInterface),
-      });
-    }
+    this.addInterfaces(packageName, manifest, new Set(definitions.map(({ interface: interfaceId }) => interfaceId)));
     await writeDynamicAppConfig(this.configPath, this.config);
     await this.reload();
     return this.snapshot();
@@ -309,6 +294,7 @@ export class DynamicRuntime {
   async close(): Promise<void> {
     await this.agentRuntime?.stop().catch((error: unknown) => console.warn("[dynamic] Could not stop message runtime:", error));
     this.agentRuntime = undefined;
+    this.webChat = undefined;
     await Promise.allSettled([...new Set(this.components.map(({ instance }) => instance).filter(Boolean))].map(closeInstance));
   }
 
@@ -317,6 +303,25 @@ export class DynamicRuntime {
     this.actions.clear();
     await this.load();
     return this.snapshot();
+  }
+
+  private addInterfaces(packageName: string, manifest: DynamicPackageManifest, skip: ReadonlySet<string>): void {
+    const existingIds = new Set(this.config.components.map(({ instanceId }) => instanceId));
+    for (const manifestInterface of manifest.interfaces) {
+      if (skip.has(manifestInterface.id) || manifestInterface.startup?.when === "manual") continue;
+      const baseId = `${manifestInterface.kind}:${manifest.id}`;
+      let instanceId = baseId;
+      let suffix = 2;
+      while (existingIds.has(instanceId)) instanceId = `${baseId}:${suffix++}`;
+      existingIds.add(instanceId);
+      this.config.components.push({
+        package: packageName,
+        version: manifest.version,
+        interface: manifestInterface.id,
+        instanceId,
+        config: manifestDefaults(manifestInterface),
+      });
+    }
   }
 
   private get(instanceId: string): LoadedComponent {
@@ -364,15 +369,9 @@ export class DynamicRuntime {
         console.warn(`[dynamic] ${definition.instanceId} is not active: ${runtimeError}`);
       }
     }
-    const web = manifestInterface.web
-      ? {
-          moduleUrl: viteFileUrl(resolvePackageEntry(packageRoot, packageJson, manifestInterface.web.entry)),
-          exportName: manifestInterface.web.export,
-          styleUrl: manifestInterface.web.styles
-            ? viteFileUrl(resolvePackageEntry(packageRoot, packageJson, manifestInterface.web.styles))
-            : undefined,
-        }
-      : undefined;
+    const { web, webError } = resolveWebSurface(packageRoot, packageJson, manifestInterface);
+    // A missing microfrontend is visible on the Build page, but the component itself keeps running.
+    if (webError && !runtimeError) runtimeError = webError;
     const instanceId = definition.instanceId!;
     return {
       definition,
@@ -387,8 +386,10 @@ export class DynamicRuntime {
         version: manifest.version,
         description: manifestInterface.description,
         config: definition.config ?? {},
+        configFields: manifestInterface.config,
         web,
         hasDataBridge: hasMicrofrontendData(instance),
+        channel: typeof (instance as { channel?: unknown } | undefined)?.channel === "string" ? (instance as { channel: string }).channel : undefined,
         enabled,
         runtimeError,
       },
@@ -417,11 +418,17 @@ export class DynamicRuntime {
     if (manifestInterface.className === "CompositeEnvironment") {
       options.providers = this.components.filter(({ descriptor, instance }) => descriptor.kind === "env" && isEnvironment(instance)).map(({ instance }) => instance);
     }
-    if (manifestInterface.kind === "orchestrator" || manifestInterface.kind === "agent") {
-      const model = this.preferredModel();
+    // Plugins list system1/system2/discovery in `required` or `optional` to receive them.
+    const uses = [...(manifestInterface.required ?? []), ...(manifestInterface.optional ?? [])];
+    if (manifestInterface.kind === "orchestrator" || manifestInterface.kind === "agent" || uses.includes("discovery")) {
+      const model = this.system("system2", definition.config?.system2Instance);
       const capabilityDiscovery = this.components.find(({ descriptor, instance }) => descriptor.kind === "discovery" && isCapabilityDiscovery(instance))?.instance;
       if (model) options.model = model;
       if (capabilityDiscovery) options.capabilityDiscovery = capabilityDiscovery;
+    }
+    for (const kind of ["system1", "system2"] as const) {
+      const system = uses.includes(kind) ? this.system(kind, definition.config?.[`${kind}Instance`]) : undefined;
+      if (system) options[kind] = system;
     }
     const memory = this.components.find(({ descriptor, instance }) =>
       descriptor.kind === "memory" && isMemory(instance),
@@ -451,14 +458,17 @@ export class DynamicRuntime {
     return (environments.find(({ manifestInterface }) => manifestInterface.className === "CompositeEnvironment") ?? environments[0])?.instance as { get(key: string): string | undefined } | undefined;
   }
 
-  private preferredModel(): unknown {
-    const models = this.components.filter(({ descriptor, instance }) => descriptor.kind === "ai" && instance);
-    return (models.find(({ definition }) => definition.config?.role === "routing") ?? models[0])?.instance;
+  private system(kind: "system1" | "system2", instanceId?: unknown): unknown {
+    const models = this.components.filter(({ descriptor, instance }) => descriptor.kind === kind && instance);
+    return (models.find(({ definition }) => definition.instanceId === instanceId)
+      ?? models.find(({ definition }) => definition.config?.role === "routing")
+      ?? models[0])?.instance;
   }
 
   private async registerActionCapabilities(): Promise<void> {
     const discovery = this.components.find(({ descriptor, instance }) => descriptor.kind === "discovery" && isCapabilityDiscovery(instance))?.instance as { register(capability: unknown): Promise<void> } | undefined;
     if (!discovery) return;
+    await discovery.register(new CapabilityDocsCapability(() => this.capabilityDocsEntries()));
     for (const { descriptor, instance } of this.components) {
       // A package may expose a capability from another live interface. Cronjob,
       // for example, must use the same object for its input listener and its
@@ -467,13 +477,63 @@ export class DynamicRuntime {
     }
   }
 
+  /** Runs one chat turn and names the components whose capabilities the agent used, so the UI can show them. */
+  async chat(text: string, sessionId: string, onDelta?: (delta: string) => void): Promise<{ text: string; components: string[] }> {
+    if (!this.webChat) throw new Error("Message runtime is not running: it needs memory, orchestrator and agent components");
+    this.webChat.setComponents(await this.openUIComponents());
+    const { text: reply, capabilityIds } = await this.webChat.ask(text, sessionId, onDelta);
+    const components = this.components
+      .filter(({ descriptor, instance }) => descriptor.web && isCapability(instance) && capabilityIds.includes((instance as { manifest: { id: string } }).manifest.id))
+      .map(({ descriptor }) => descriptor.instanceId);
+    return { text: reply, components: [...new Set(components)] };
+  }
+
+  /** Each capability declares its chat components in `uiComponents()`; its web module exports the matching renderers. */
+  private async openUIComponents(): Promise<OpenUIComponentSpec[]> {
+    const specs: OpenUIComponentSpec[] = [];
+    for (const { descriptor, instance } of this.components) {
+      if (!descriptor.web || descriptor.enabled === false) continue;
+      const declared = (instance as { uiComponents?: () => readonly OpenUIComponentSpec[] } | undefined)?.uiComponents;
+      if (typeof declared === "function") {
+        specs.push(...declared.call(instance));
+        continue;
+      }
+      // Packages published before uiComponents() put the specs in their bridge data.
+      if (!descriptor.hasDataBridge) continue;
+      const data = await this.bridgeData(descriptor.instanceId).catch(() => undefined) as { openui?: unknown } | undefined;
+      if (Array.isArray(data?.openui)) specs.push(...data.openui as OpenUIComponentSpec[]);
+    }
+    // Two instances of one package publish the same components; the model needs each name once.
+    return specs.filter((spec, index) => specs.findIndex((other) => other.name === spec.name) === index);
+  }
+
+  private capabilityDocsEntries(): CapabilityDocsEntry[] {
+    const environment = this.environmentInstance();
+    return this.components.flatMap(({ definition, descriptor, manifestInterface, instance }) => {
+      if (descriptor.enabled === false || !isCapability(instance)) return [];
+      const configured = definition.config ?? {};
+      return [{
+        capability: instance as CapabilityDocsEntry["capability"],
+        packageName: descriptor.packageName,
+        configFields: manifestInterface.config ?? [],
+        configValue: (key: string, env?: string) => configured[key] ?? (env ? environment?.get(env) ?? process.env[env] : undefined)
+          ?? manifestInterface.config?.find((field) => field.key === key)?.default,
+      }];
+    });
+  }
+
   private startAgentRuntime(): void {
-    const inputs = uniqueInstances(this.components.filter(({ descriptor }) => descriptor.kind === "input").map(({ instance }) => instance).filter(isInputInterface));
-    const outputs = uniqueInstances(this.components.filter(({ descriptor }) => descriptor.kind === "output").map(({ instance }) => instance).filter(isOutputInterface));
+    const inputs = [...new Set(this.components.filter(({ descriptor }) => descriptor.kind === "input").map(({ instance }) => instance).filter(isInputInterface))];
+    const outputs = [...new Set(this.components.filter(({ descriptor }) => descriptor.kind === "output").map(({ instance }) => instance).filter(isOutputInterface))];
     const memory = this.components.find(({ descriptor, instance }) => descriptor.kind === "memory" && isMemory(instance))?.instance as Memory | undefined;
     const orchestrator = this.components.find(({ descriptor, instance }) => descriptor.kind === "orchestrator" && isOrchestrator(instance))?.instance as Orchestrator | undefined;
     const agentLoop = this.components.find(({ descriptor, instance }) => descriptor.kind === "agent" && isAgentLoop(instance))?.instance as AgentLoop | undefined;
-    if (!inputs.length || !outputs.length || !memory || !orchestrator || !agentLoop) return;
+    for (const warning of ignoredSingletons(this.components.filter(({ instance }) => instance).map(({ descriptor }) => descriptor))) console.warn(`[dynamic] ${warning}`);
+    if (!memory || !orchestrator || !agentLoop) return;
+    const webChat = new WebChat(this.environmentInstance()?.get("AGENT_OS_USER_ID"));
+    inputs.push(webChat);
+    outputs.push(webChat);
+    this.webChat = webChat;
     this.agentRuntime = new AgentRuntime({
       inputs,
       outputs,
@@ -481,10 +541,21 @@ export class DynamicRuntime {
       orchestrator,
       agentLoop,
       stream: this.environmentInstance()?.get("AI_STREAM") !== "false",
+      onRun: (run) => { this.telemetry.record(run); webChat.onRun(run); },
     });
     this.agentRuntime.start();
     console.log(`[dynamic] message runtime started (${inputs.map(({ channel }) => channel).join(", ")})`);
   }
+}
+
+/** The message runtime uses one memory, orchestrator and agent loop; extra ones would otherwise be ignored silently. */
+export function ignoredSingletons(components: readonly Pick<RuntimeComponentDto, "kind" | "instanceId">[]): string[] {
+  return (["memory", "orchestrator", "agent"] as const).flatMap((kind) => {
+    const [used, ...ignored] = components.filter((component) => component.kind === kind);
+    return used && ignored.length
+      ? [`Only one ${kind} is used: ${used.instanceId} is active, ${ignored.map(({ instanceId }) => instanceId).join(", ")} ignored`]
+      : [];
+  });
 }
 
 function assignUniqueInstanceIds(components: DynamicComponentConfig[]): void {
@@ -500,7 +571,7 @@ function assignUniqueInstanceIds(components: DynamicComponentConfig[]): void {
 }
 
 function kindPriority(kind: DynamicManifestInterface["kind"]): number {
-  return { env: 0, database: 1, memory: 2, ai: 3, discovery: 4, input: 5, output: 5, action: 5, agent: 6, orchestrator: 7 }[kind];
+  return { env: 0, database: 1, memory: 2, system1: 3, system2: 3, discovery: 4, input: 5, output: 5, action: 5, agent: 6, orchestrator: 7 }[kind];
 }
 
 function isEnvironment(value: unknown): value is { get(key: string): string | undefined } {
@@ -535,10 +606,6 @@ function isAgentLoop(value: unknown): value is AgentLoop {
   return Boolean(value && typeof value === "object" && typeof (value as { run?: unknown }).run === "function");
 }
 
-function uniqueInstances<T extends object>(values: readonly T[]): T[] {
-  return [...new Set(values)];
-}
-
 function coerceConfigValue(value: unknown, type: unknown): unknown {
   if (type === "number") { const number = typeof value === "number" ? value : Number(value); if (!Number.isFinite(number)) throw new Error(`Invalid number config value: ${String(value)}`); return number; }
   if (type !== "boolean" || typeof value === "boolean") return value;
@@ -547,16 +614,32 @@ function coerceConfigValue(value: unknown, type: unknown): unknown {
   throw new Error(`Invalid boolean config value: ${String(value)}`);
 }
 
-function manifestDefaults(manifestInterface: DynamicManifestInterface): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const item of manifestInterface.config ?? []) {
-    if (typeof item.key === "string" && Object.hasOwn(item, "default")) result[item.key] = item.default;
-  }
-  return result;
-}
-
 async function readPackageJson(packageRoot: string): Promise<InstalledPackageJson> {
   return JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")) as InstalledPackageJson;
+}
+
+function resolveWebSurface(packageRoot: string, packageJson: InstalledPackageJson, manifestInterface: DynamicManifestInterface): { web?: RuntimeWebSurface; webError?: string } {
+  const surface = manifestInterface.web;
+  if (!surface) return { webError: "Missing microfrontend: the interface declares no web entry" };
+  let moduleUrl: string;
+  try {
+    moduleUrl = viteFileUrl(resolvePackageEntry(packageRoot, packageJson, surface.entry));
+  } catch (error) {
+    const hint = surface.conventional ? ` (no \`web:\` in agent-os.package.yaml, so ${surface.entry} was expected)` : "";
+    return { webError: `Missing microfrontend: ${error instanceof Error ? error.message : String(error)}${hint}` };
+  }
+  return { web: { moduleUrl, exportName: surface.export, styleUrl: optionalStyleUrl(packageRoot, packageJson, surface) } };
+}
+
+/** Styles are optional: the conventional `./web/styles.css` may simply not exist. */
+function optionalStyleUrl(packageRoot: string, packageJson: InstalledPackageJson, surface: ManifestWebSurface): string | undefined {
+  if (!surface.styles) return undefined;
+  try {
+    return viteFileUrl(resolvePackageEntry(packageRoot, packageJson, surface.styles));
+  } catch (error) {
+    if (!surface.conventional) console.warn(`[dynamic] ${surface.styles} not found: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
 }
 
 function resolvePackageEntry(

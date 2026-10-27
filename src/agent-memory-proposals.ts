@@ -9,7 +9,6 @@ export async function persistMemoryProposals(
   memory: Memory,
   message: InputMessage,
   proposals: readonly MemoryProposal[] = [],
-  log: (message: string) => void = console.log,
 ): Promise<void> {
   if (!message.userId) return;
   for (const proposal of proposals) {
@@ -32,7 +31,7 @@ export async function persistMemoryProposals(
         sourceChannel: message.channel,
       },
     });
-    log(`Added memory: ${content}`);
+    console.log(`Added memory: ${content}`);
   }
 }
 

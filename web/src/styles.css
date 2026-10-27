@@ -1,223 +1,77 @@
 @import "@agent-os/microfrontend/styles.css";
 @import "@fontsource-variable/noto-sans";
+@import "@openuidev/react-ui/index.css";
 
 @source ".";
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: "Noto Sans Variable", sans-serif;
-  --font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo, monospace;
+  --font-sans: "Noto Sans Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Plugin stylesheets re-import the shared globals and would reset these after us; the doubled selector keeps the host's values. */
 html:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.148 0.004 228.8);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.148 0.004 228.8);
-  --primary: oklch(0.218 0.008 223.9);
-  --primary-foreground: oklch(0.987 0.002 197.1);
-  --secondary: oklch(0.963 0.002 197.1);
-  --secondary-foreground: oklch(0.218 0.008 223.9);
-  --muted: oklch(0.963 0.002 197.1);
-  --muted-foreground: oklch(0.56 0.021 213.5);
-  --accent: oklch(0.963 0.002 197.1);
-  --accent-foreground: oklch(0.218 0.008 223.9);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.925 0.005 214.3);
-  --input: oklch(0.925 0.005 214.3);
-  --ring: oklch(0.723 0.014 214.4);
-  --radius: 0;
+  --font-sans: "Noto Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --radius: 0.75rem;
 }
 
-html.dark {
-  --background: oklch(0.13 0.006 215);
-  --foreground: oklch(0.987 0.002 197.1);
-  --card: oklch(0.16 0.007 215);
-  --card-foreground: oklch(0.987 0.002 197.1);
-  --primary: oklch(0.925 0.005 214.3);
-  --primary-foreground: oklch(0.218 0.008 223.9);
-  --secondary: oklch(0.275 0.011 216.9);
-  --secondary-foreground: oklch(0.987 0.002 197.1);
-  --muted: oklch(0.205 0.009 215);
-  --muted-foreground: oklch(0.723 0.014 214.4);
-  --accent: oklch(0.275 0.011 216.9);
-  --accent-foreground: oklch(0.987 0.002 197.1);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 11%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.56 0.021 213.5);
+html,
+body {
+  overscroll-behavior-x: none;
+}
+body {
+  @apply bg-background text-foreground antialiased;
 }
 
-@layer base {
-  body {
-    @apply bg-background text-foreground antialiased;
-    background-image:
-      linear-gradient(to right, color-mix(in oklch, var(--border), transparent 72%) 1px, transparent 1px),
-      linear-gradient(to bottom, color-mix(in oklch, var(--border), transparent 72%) 1px, transparent 1px);
-    background-size: 32px 32px;
-    background-attachment: fixed;
-  }
-
-  button,
-  select {
-    border-radius: 0;
-  }
-
-  button:focus-visible,
-  input:focus-visible,
-  textarea:focus-visible,
-  select:focus-visible {
-    outline: 1px solid #34d399;
-    outline-offset: -1px;
-  }
-
-  ::selection {
-    background: color-mix(in oklch, #34d399, transparent 55%);
-    color: var(--foreground);
-  }
-
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklch, var(--foreground), transparent 78%) transparent;
-  }
+/* The theme toggle drives the reveal itself (a growing circle), so the default crossfade is off. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
-@layer components {
-  [data-slot="card"],
-  [data-slot="button"],
-  [data-slot="input"],
-  [data-slot="textarea"],
-  [data-slot="badge"],
-  [data-slot="breadcrumb-link"],
-  [data-slot="breadcrumb-page"] {
-    border-radius: 0 !important;
-  }
+.field {
+  @apply min-w-0 flex-1 rounded-full border bg-transparent px-4 py-1.5 text-sm outline-none focus:border-foreground/40;
 }
 
-@layer components {
-  .agentos-shell {
-    display: block;
-  }
-
-  .agentos-sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    z-index: 70;
-    display: flex;
-    width: min(18rem, 88vw);
-    height: 100svh;
-    flex-direction: column;
-    transform: translateX(-100%);
-    transition: transform 200ms ease;
-    box-shadow: 1.5rem 0 4rem rgb(0 0 0 / 28%);
-  }
-
-  .agentos-sidebar.mobile-open {
-    transform: translateX(0);
-  }
-
-  .agentos-sidebar-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 60;
-    background: rgb(0 0 0 / 62%);
-    backdrop-filter: blur(3px);
-  }
-
-  .agentos-topbar {
-    height: 4rem;
-    box-sizing: border-box;
-  }
-
-  .agentos-content {
-    min-width: 0;
-  }
-
-  .agentos-shell > section {
-    min-height: 100svh;
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-  }
-
-  .agentos-shell aside {
-    background-image: linear-gradient(to bottom, color-mix(in oklch, var(--muted), transparent 70%), transparent 16rem);
-  }
-
-  @media (min-width: 1024px) {
-    .agentos-shell {
-      display: grid;
-      grid-template-columns: 0 minmax(0, 1fr);
-      transition: grid-template-columns 200ms ease;
-    }
-
-    .agentos-shell.agentos-sidebar-open {
-      grid-template-columns: 16rem minmax(0, 1fr);
-    }
-
-    .agentos-sidebar {
-      position: sticky;
-      top: 0;
-      z-index: 45;
-      grid-column: 1;
-      grid-row: 1;
-      width: 16rem;
-      max-width: none;
-      box-shadow: none;
-      transform: translateX(-100%);
-      visibility: hidden;
-      pointer-events: none;
-      transition: transform 200ms ease, visibility 200ms ease;
-    }
-
-    .agentos-sidebar-open .agentos-sidebar {
-      transform: translateX(0);
-      visibility: visible;
-      pointer-events: auto;
-    }
-
-    .agentos-content {
-      grid-column: 2;
-      grid-row: 1;
-    }
-
-    .agentos-sidebar-scrim {
-      display: none;
-    }
-  }
-
-  .agentos-runtime-graph {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .agentos-graph-edge {
-    display: none;
-  }
-
-  @media (min-width: 1180px) {
-    .agentos-runtime-graph {
-      grid-template-columns: minmax(15rem, 0.9fr) 1.25rem minmax(20rem, 1.3fr) 1.25rem minmax(15rem, 0.9fr);
-      align-items: start;
-    }
-
-    .agentos-graph-edge {
-      display: block;
-      align-self: stretch;
-      min-height: 8rem;
-      background:
-        linear-gradient(to bottom, transparent 0, transparent calc(50% - 1px), color-mix(in oklch, var(--foreground), transparent 72%) calc(50% - 1px), color-mix(in oklch, var(--foreground), transparent 72%) calc(50% + 1px), transparent calc(50% + 1px)),
-        linear-gradient(to right, transparent 0, transparent calc(50% - 1px), #34d399 calc(50% - 1px), #34d399 calc(50% + 1px), transparent calc(50% + 1px));
-      background-size: 100% 100%, 100% 0.5rem;
-      background-position: center, center;
-      background-repeat: no-repeat;
-    }
-  }
-
-  .agentos-statusbar {
-    position: sticky;
-    bottom: 0;
-    z-index: 50;
-    background: color-mix(in oklch, var(--background), transparent 4%);
-    backdrop-filter: blur(16px);
-  }
+/* Each top-level OpenUI component rises in as its statement completes while the answer streams. */
+.openui-answer > div > div > div > * {
+  animation: agent-os-rise 0.45s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
+
+/*
+ * Icon micro-animations: an icon plays when its `.group` parent is hovered or keyboard-focused.
+ * Loops (nudges) run only while hovered; one-shots (rewind, gear, grid) replay on each hover.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  :is(.group:hover, .group:focus-visible, .group:focus-within) :is(.icon-rewind) { animation: icon-rewind 0.7s cubic-bezier(0.22, 1, 0.36, 1); }
+  :is(.group:hover, .group:focus-visible) .icon-grid { animation: icon-grid 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+  :is(.group:hover, .group:focus-visible) .icon-gear { animation: icon-gear 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+  :is(.group:hover, .group:focus-visible) .icon-bounce { animation: icon-bounce 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
+  :is(.group:hover, .group:focus-visible) .icon-wiggle,
+  .group:focus-within .icon-wiggle { animation: icon-wiggle 0.5s ease-in-out; }
+  :is(.group:hover, .group:focus-visible) .icon-nudge-left { animation: icon-nudge-left 0.9s ease-in-out infinite; }
+  :is(.group:hover, .group:focus-visible) .icon-nudge-up { animation: icon-nudge-up 0.9s ease-in-out infinite; }
+  :is(.group:hover, .group:focus-visible) .icon-nudge-out { animation: icon-nudge-out 0.9s ease-in-out infinite; }
+  .icon-turn { transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+  :is(.group:hover, .group:focus-visible) .icon-turn { transform: rotate(90deg); }
+  .icon-tilt { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  :is(.group:hover, .group:focus-visible) .icon-tilt { transform: rotate(-8deg) scale(1.06); }
+}
+
+@keyframes icon-rewind { from { transform: rotate(0); } to { transform: rotate(-360deg); } }
+@keyframes icon-grid { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(45deg) scale(0.8); } 100% { transform: rotate(90deg) scale(1); } }
+@keyframes icon-gear { from { transform: rotate(0); } to { transform: rotate(180deg); } }
+@keyframes icon-bounce { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-3px) scale(1.08); } 70% { transform: translateY(1px) scale(0.96); } }
+@keyframes icon-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 50% { transform: rotate(10deg); } 75% { transform: rotate(-5deg); } }
+@keyframes icon-nudge-left { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-3px); } }
+@keyframes icon-nudge-up { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes icon-nudge-out { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(2px, -2px); } }
+
+/* Architecture diagram: dashes drift along each connection in its direction; pulses ride the message path. */
+@media (prefers-reduced-motion: no-preference) {
+  .flow-dash { animation: flow-dash 0.9s linear infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-pulse { display: none; }
+}
+@keyframes flow-dash { to { stroke-dashoffset: -10; } }

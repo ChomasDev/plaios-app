@@ -11,8 +11,10 @@ import type {
 } from "@agent-os/core";
 
 import { AgentRuntime } from "../src/agent-runtime.js";
+import { Telemetry } from "../src/telemetry.js";
+import type { AgentRunDto } from "../src/types.js";
 
-function createHarness(orchestrator: Orchestrator, agentLoop: AgentLoop) {
+function createHarness(orchestrator: Orchestrator, agentLoop: AgentLoop, onRun?: (run: AgentRunDto) => void) {
   let listener: InputListener | undefined;
   let stopInput!: () => void;
   const stopped = new Promise<void>((resolve) => { stopInput = resolve; });
@@ -37,7 +39,7 @@ function createHarness(orchestrator: Orchestrator, agentLoop: AgentLoop) {
     async forget() { return false; },
     async clear() { return 0; },
   } as Memory;
-  const runtime = new AgentRuntime({ inputs: [input], outputs: [output], memory, orchestrator, agentLoop });
+  const runtime = new AgentRuntime({ inputs: [input], outputs: [output], memory, orchestrator, agentLoop, onRun });
   return { runtime, getListener: () => listener, written, remembered, stopInput };
 }
 
@@ -119,5 +121,30 @@ test("confirms a remembered protocol without calling the orchestrator", async ()
   assert.equal(orchestrated, false);
   assert.match(written[0] ?? "", /protocollo agentos/);
   assert.match(written[0] ?? "", /100\.103\.217\.8:3100/);
+  await runtime.stop();
+});
+
+test("records each run with chosen capabilities, latency and failures", async () => {
+  const telemetry = new Telemetry();
+  let fail = false;
+  const { runtime, getListener } = createHarness(
+    { async orchestrate() { return { capabilityIds: ["ssh.control"], outputChannel: "openrouter-api" }; } } as Orchestrator,
+    { async run() { if (fail) throw new Error("model down"); return { type: "text" as const, text: "ok" }; } } as AgentLoop,
+    (run) => telemetry.record(run),
+  );
+  runtime.start();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const listener = getListener()!;
+  const message: InputMessage = { id: "r", channel: "openrouter-api", sessionId: "s", userId: "u", text: "hi", createdAt: new Date() };
+  await listener(message);
+  fail = true;
+  await assert.rejects(async () => listener(message), /model down/);
+  const { runs } = telemetry.snapshot();
+  assert.equal(runs.total, 2);
+  assert.equal(runs.failed, 1);
+  assert.equal(runs.recent[0]?.error, "model down");
+  assert.deepEqual(runs.recent[1]?.capabilityIds, ["ssh.control"]);
+  assert.equal(runs.recent[1]?.outputChannel, "openrouter-api");
+  assert.ok(runs.recent[1]!.durationMs >= 0);
   await runtime.stop();
 });

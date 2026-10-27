@@ -1,11 +1,9 @@
-import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
+import { run } from "./installer.js";
 import type { HostSettingsDto, HostUpdateResult } from "./types.js";
-
-export type { HostSettingsDto, HostUpdateResult };
 
 const HOST_PACKAGE = "agentos";
 const RUNTIME_PACKAGES = [
@@ -164,15 +162,4 @@ export async function ensureReleaseAgeExclude(root: string, packageName: string,
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function run(command: string, args: readonly string[], cwd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: "inherit", shell: false });
-    child.once("error", reject);
-    child.once("exit", (code, signal) => {
-      if (code === 0) resolve();
-      else reject(new Error(`${command} failed${signal ? ` with signal ${signal}` : ` with exit code ${code}`}`));
-    });
-  });
 }

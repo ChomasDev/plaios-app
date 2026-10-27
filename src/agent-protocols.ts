@@ -1,3 +1,5 @@
+import { isRecord } from "./types.js";
+
 export interface ProtocolDefinition {
   trigger: string;
   instruction: string;
@@ -53,33 +55,20 @@ export function parseProtocolRemember(text: string): ProtocolDefinition | undefi
   return undefined;
 }
 
-export function defineProtocol(trigger: string, instruction: string): ProtocolDefinition {
-  const cleanTrigger = stripQuotes(trigger);
+function defineProtocol(trigger: string, instruction: string): ProtocolDefinition {
   const cleanInstruction = instruction.trim().replace(/[.]+\s*$/, "");
-  const url = extractUrl(cleanInstruction);
-  const device = /\b(mac|macos|pc|computer)\b/i.test(cleanInstruction) ? "mac" : undefined;
+  const url = cleanInstruction.match(/https?:\/\/[^\s"'<>]+/i)?.[0]?.replace(/[),.;]+$/, "");
+  const onMac = /\b(mac|macos|pc|computer)\b/i.test(cleanInstruction);
   return {
-    trigger: cleanTrigger,
+    trigger: stripQuotes(trigger),
     instruction: cleanInstruction,
-    expansion: expandProtocolInstruction(cleanInstruction),
+    expansion: url ? `Apri ${url}${onMac ? " sul Mac" : ""}` : cleanInstruction,
     ...(url ? { url } : {}),
-    ...(device ? { device } : {}),
+    ...(onMac ? { device: "mac" } : {}),
   };
 }
 
-export function expandProtocolInstruction(instruction: string): string {
-  const url = extractUrl(instruction);
-  if (!url) return instruction.trim();
-  const onMac = /\b(mac|macos|pc|computer)\b/i.test(instruction);
-  return onMac ? `Apri ${url} sul Mac` : `Apri ${url}`;
-}
-
-export function extractUrl(text: string): string | undefined {
-  const match = text.match(/https?:\/\/[^\s"'<>]+/i);
-  return match?.[0]?.replace(/[),.;]+$/, "");
-}
-
-export function matchProtocolTrigger(utterance: string, trigger: string): boolean {
+function matchProtocolTrigger(utterance: string, trigger: string): boolean {
   const spoken = normalizePhrase(utterance);
   const expected = normalizePhrase(trigger);
   if (!spoken || !expected) return false;
@@ -225,10 +214,6 @@ function normalizePhrase(value: string): string {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function levenshtein(left: string, right: string): number {

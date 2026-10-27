@@ -16,5 +16,12 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "web/**/*.ts", "web/**/*.tsx", "test/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "web/**/*.ts",
+    "web/**/*.tsx",
+    "test/**/*.ts",
+    "landing/**/*.ts",
+    "landing/**/*.tsx"
+  ]
 }

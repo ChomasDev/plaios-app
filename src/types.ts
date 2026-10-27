@@ -1,6 +1,7 @@
 export type InterfaceKind =
   | "env"
-  | "ai"
+  | "system1"
+  | "system2"
   | "discovery"
   | "database"
   | "memory"
@@ -12,7 +13,8 @@ export type InterfaceKind =
 
 export const INTERFACE_KINDS: readonly InterfaceKind[] = [
   "env",
-  "ai",
+  "system1",
+  "system2",
   "discovery",
   "database",
   "memory",
@@ -25,7 +27,8 @@ export const INTERFACE_KINDS: readonly InterfaceKind[] = [
 
 export const CORE_KINDS: readonly InterfaceKind[] = [
   "env",
-  "ai",
+  "system1",
+  "system2",
   "discovery",
   "database",
   "memory",
@@ -34,6 +37,10 @@ export const CORE_KINDS: readonly InterfaceKind[] = [
 ];
 
 export const TOGGLE_KINDS: readonly InterfaceKind[] = ["input", "output", "action"];
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export interface DynamicComponentConfig {
   package: string;
@@ -58,6 +65,8 @@ export interface ManifestWebSurface {
   entry: string;
   export: string;
   styles?: string;
+  /** True when the yaml has no `web:` and the conventional `./web/<kind>` entry is assumed. */
+  conventional?: boolean;
 }
 
 export interface DynamicManifestInterface {
@@ -70,6 +79,8 @@ export interface DynamicManifestInterface {
   description?: string;
   web?: ManifestWebSurface;
   config?: readonly Record<string, unknown>[];
+  required?: readonly string[];
+  optional?: readonly string[];
   startup?: { when: "always" | "ifConfigured" | "manual" };
 }
 
@@ -97,8 +108,11 @@ export interface RuntimeComponentDto {
   version: string;
   description?: string;
   config: Record<string, unknown>;
+  configFields?: readonly Record<string, unknown>[];
   web?: RuntimeWebSurface;
   hasDataBridge: boolean;
+  /** Message channel for input/output components, read from the running instance. */
+  channel?: string;
   enabled: boolean;
   runtimeError?: string;
 }
@@ -146,6 +160,33 @@ export interface HostSettingsDto {
   registryReachable: boolean;
 }
 
+export interface AgentRunDto {
+  at: string;
+  channel: string;
+  outputChannel?: string;
+  capabilityIds: string[];
+  durationMs: number;
+  ok: boolean;
+  error?: string;
+}
+
+export interface TelemetryDto {
+  startedAt: string;
+  uptimeSec: number;
+  host: {
+    hostname: string;
+    platform: string;
+    node: string;
+    cpus: number;
+    loadavg: [number, number, number];
+    memoryTotal: number;
+    memoryFree: number;
+    rss: number;
+    heapUsed: number;
+  };
+  runs: { total: number; failed: number; recent: AgentRunDto[] };
+}
+
 export interface RuntimeSwapResult extends RuntimeSnapshot {
   kind: InterfaceKind;
   packageName: string;
@@ -166,8 +207,39 @@ export interface StorePackageDto {
   installed: boolean;
   updateAvailable: boolean;
   instances: number;
+  kinds: InterfaceKind[];
+  updatedAt?: string;
+}
+
+/** Everything the Store's package page shows, read from the registry's packument. */
+export interface StorePackageDetailDto extends StorePackageDto {
+  readme?: string;
+  license?: string;
+  homepage?: string;
+  repository?: string;
+  author?: string;
+  createdAt?: string;
+  versions: Array<{ version: string; date?: string }>;
+  dependencies: string[];
+  peerDependencies: string[];
+  unpackedSize?: number;
+  fileCount?: number;
 }
 
 export interface BridgeActionMarker {
   __agentOsAction: string;
+}
+
+/** Mirror of the microfrontend package's OpenUI component contract, kept here so server declarations never pull in React sources. */
+export interface OpenUIPropSpec {
+  name: string;
+  type: "string" | "string[]" | "number" | "boolean";
+  optional?: boolean;
+  description?: string;
+}
+
+export interface OpenUIComponentSpec {
+  name: string;
+  description: string;
+  props: readonly OpenUIPropSpec[];
 }

@@ -9,9 +9,9 @@ import { loadOrCreateConfig, resolveConfigPath } from "./config.js";
 import { scheduleHostRestart, updateHostPackage } from "./host-settings.js";
 import { installConfiguredPackages } from "./installer.js";
 import { DynamicRuntime } from "./runtime.js";
-import { listStorePackages } from "./store-catalog.js";
+import { getStorePackage, listStorePackages } from "./store-catalog.js";
 import type { InterfaceKind } from "./types.js";
-import { INTERFACE_KINDS } from "./types.js";
+import { INTERFACE_KINDS, isRecord } from "./types.js";
 
 export interface StartDynamicAppOptions {
   currentDirectory?: string;
@@ -58,7 +58,12 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
       port: config.server.port,
       strictPort: true,
       allowedHosts: true,
-      fs: { strict: true, allow: [packageRoot, projectRoot, runtimeRoot] },
+      // Plugin modules are served through /@fs/, so keep databases and secrets out of reach. The first four are Vite's defaults.
+      fs: {
+        strict: true,
+        allow: [packageRoot, projectRoot, runtimeRoot],
+        deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/.agent-os/data/**", "*.{sqlite,sqlite3,db}", "*.{sqlite,db}-{wal,shm,journal}"],
+      },
     },
   });
   await vite.listen();
@@ -90,11 +95,19 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
           if (request.method === "GET" && url.pathname === "/api/runtime") {
             return json(response, 200, runtime.snapshot());
           }
+          if (request.method === "GET" && url.pathname === "/api/telemetry") {
+            return json(response, 200, runtime.telemetry.snapshot());
+          }
           if (request.method === "POST" && url.pathname === "/api/runtime/reload") {
             return json(response, 200, await runtime.reload());
           }
           if (request.method === "GET" && url.pathname === "/api/store") {
             return json(response, 200, await listStorePackages(runtime.snapshot()));
+          }
+          if (request.method === "GET" && url.pathname === "/api/store/package") {
+            const name = url.searchParams.get("name");
+            if (!name) throw new Error("Invalid Store package request");
+            return json(response, 200, await getStorePackage(runtime.snapshot(), name));
           }
           if (request.method === "POST" && url.pathname === "/api/store/install") {
             const body = await bodyJson(request) as { packageName?: unknown; version?: unknown };
@@ -116,6 +129,22 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
             const snapshot = await runtime.updatePackage(body.packageName, body.version);
             scheduleHostRestart();
             return json(response, 200, { ...snapshot, restarting: true });
+          }
+          if (request.method === "POST" && url.pathname === "/api/chat") {
+            const body = await bodyJson(request) as { text?: unknown; sessionId?: unknown };
+            if (typeof body.text !== "string" || !body.text.trim() || typeof body.sessionId !== "string") throw new Error("Invalid chat request");
+            // Newline-delimited JSON: {delta} while the model streams, then {done, components} or {error}.
+            response.statusCode = 200;
+            response.setHeader("content-type", "application/x-ndjson; charset=utf-8");
+            response.setHeader("cache-control", "no-store");
+            const send = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
+            try {
+              const result = await runtime.chat(body.text.trim(), body.sessionId, (delta) => send({ delta }));
+              send({ done: true, components: result.components });
+            } catch (error) {
+              send({ error: error instanceof Error ? error.message : String(error) });
+            }
+            return response.end();
           }
           const dataMatch = /^\/api\/components\/([^/]+)\/data$/.exec(url.pathname);
           if (request.method === "GET" && dataMatch) {
@@ -183,8 +212,6 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
   };
 }
 
-export { isNewerVersion } from "./store-catalog.js";
-
 function bodyJson(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolveBody, reject) => {
     let source = "";
@@ -205,10 +232,6 @@ function json(response: { statusCode: number; setHeader(name: string, value: str
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
   response.end(JSON.stringify(value));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 let handlersInstalled = false;

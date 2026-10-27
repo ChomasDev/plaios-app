@@ -2,7 +2,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import type { DynamicAppConfig, DynamicComponentConfig } from "./types.js";
+import { isRecord, type DynamicAppConfig, type DynamicComponentConfig } from "./types.js";
 
 export const DEFAULT_CONFIG_FILE = "agent-os.yaml";
 export const DEFAULT_REGISTRY = "http://localhost:4873";
@@ -93,6 +93,25 @@ export function resolveConfigPath(currentDirectory: string, path?: string): stri
   return resolve(currentDirectory, path ?? process.env.AGENT_OS_CONFIG ?? DEFAULT_CONFIG_FILE);
 }
 
+// Packages published under a misspelled name; configs that still use it are moved to the new one on load.
+const RENAMED_PACKAGES: Record<string, { package: string; from: string; to: string }> = {
+  "@agent-os/jev-orhcestator": { package: "@agent-os/jev-orchestrator", from: "jev-orhcestator.", to: "jev-orchestrator." },
+};
+
+function migrateComponent(component: DynamicComponentConfig): DynamicComponentConfig {
+  const renamed = RENAMED_PACKAGES[component.package];
+  if (!renamed) return component;
+  return {
+    ...component,
+    package: renamed.package,
+    // Old versions were never published under the new name.
+    version: "latest",
+    interface: component.interface.startsWith(renamed.from)
+      ? renamed.to + component.interface.slice(renamed.from.length)
+      : component.interface,
+  };
+}
+
 function parseComponent(value: unknown, index: number): DynamicComponentConfig {
   if (!isRecord(value)) throw new Error(`components[${index}] must be an object`);
   const packageName = requiredText(value.package, `components[${index}].package`);
@@ -103,14 +122,14 @@ function parseComponent(value: unknown, index: number): DynamicComponentConfig {
   if (config !== undefined && !isRecord(config)) {
     throw new Error(`components[${index}].config must be an object`);
   }
-  return {
+  return migrateComponent({
     package: packageName,
     version: optionalText(value.version, `components[${index}].version`),
     interface: requiredText(value.interface, `components[${index}].interface`),
     instanceId: optionalText(value.instanceId, `components[${index}].instanceId`),
     enabled: optionalBoolean(value.enabled, `components[${index}].enabled`),
     config,
-  };
+  });
 }
 
 function requiredUrl(value: unknown, path: string): string {
@@ -148,8 +167,4 @@ function optionalBoolean(value: unknown, path: string): boolean | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") throw new Error(`${path} must be a boolean`);
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

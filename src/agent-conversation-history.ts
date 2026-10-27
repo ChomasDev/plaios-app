@@ -10,26 +10,13 @@ import {
 } from "./agent-protocols.js";
 
 const CHAT_NAMESPACE = "chat-history";
-
-export const CONVERSATION_HISTORY_LIMIT = 10;
-
-export interface ConversationHistoryOptions {
-  historyLimit?: number;
-  memoryLimit?: number;
-}
+const HISTORY_LIMIT = 10;
+const MEMORY_LIMIT = 10;
 
 export class ConversationHistory {
-  private readonly historyLimit: number;
-  private readonly memoryLimit: number;
   private readonly recalledByMessage = new Map<string, readonly MemoryEntry[]>();
 
-  constructor(
-    private readonly memory: Memory,
-    options: ConversationHistoryOptions = {},
-  ) {
-    this.historyLimit = Math.max(0, options.historyLimit ?? CONVERSATION_HISTORY_LIMIT);
-    this.memoryLimit = Math.max(0, options.memoryLimit ?? 10);
-  }
+  constructor(private readonly memory: Memory) {}
 
   async contextualize(message: InputMessage): Promise<InputMessage> {
     const [history, memories] = await Promise.all([
@@ -51,14 +38,13 @@ export class ConversationHistory {
       : await findMatchingProtocol(this.memory as ProtocolMemory, message.userId, currentText);
     const requestText = matched?.expansion ?? currentText;
     const fromTranscript = previousTranscriptTurns(originalText(message));
-    const conversationHistory = lastTurns(
+    const conversationHistory = (
       fromTranscript.length > 0
         ? fromTranscript
         : incomingHistory.length > 0
           ? incomingHistory
-          : storedHistory,
-      this.historyLimit,
-    );
+          : storedHistory
+    ).slice(-HISTORY_LIMIT);
     return {
       ...message,
       text: buildContext(message.text, conversationHistory, memories, message.createdAt),
@@ -121,12 +107,11 @@ export class ConversationHistory {
   }
 
   private async loadHistory(sessionId: string): Promise<MemoryEntry[]> {
-    if (this.historyLimit === 0) return [];
     const entries = await this.memory.recall({
       sessionId,
       kinds: ["working"],
       metadata: { namespace: CHAT_NAMESPACE },
-      limit: this.historyLimit,
+      limit: HISTORY_LIMIT,
       order: "newest",
     });
     return [...entries].reverse();
@@ -135,12 +120,12 @@ export class ConversationHistory {
   private async loadRelevantMemories(
     message: InputMessage,
   ): Promise<readonly MemoryEntry[]> {
-    if (this.memoryLimit === 0 || !message.userId) return [];
+    if (!message.userId) return [];
     return this.memory.recall({
       text: originalText(message),
       kinds: ["semantic", "episodic", "procedural"],
       userId: message.userId,
-      limit: this.memoryLimit,
+      limit: MEMORY_LIMIT,
       order: "newest",
     });
   }
@@ -225,10 +210,6 @@ function parseTranscriptTurns(text: string): Array<{ role: string; content: stri
       if (!content) return [];
       return [{ role: match[1]!.toLowerCase(), content }];
     });
-}
-
-function lastTurns<T>(items: readonly T[], limit: number): T[] {
-  return limit > 0 ? items.slice(-limit) : [];
 }
 
 function buildContext(

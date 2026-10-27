@@ -94,9 +94,9 @@ async function isExactVersionInstalled(
   }
 }
 
-function run(command: string, args: readonly string[]): Promise<void> {
+export function run(command: string, args: readonly string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "inherit", shell: false });
+    const child = spawn(command, args, { cwd, stdio: "inherit", shell: false });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
       if (code === 0) resolve();

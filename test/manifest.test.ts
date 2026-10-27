@@ -34,3 +34,16 @@ interfaces:
   - { id: bad.any, kind: anything }
 `), /Invalid interface kind/);
 });
+
+test("assumes the conventional web entry when an interface declares none", () => {
+  const manifest = parsePackageManifest(`
+schemaVersion: 1
+id: demo
+name: Demo
+version: 1.0.0
+interfaces:
+  - id: demo.action
+    kind: action
+`);
+  assert.deepEqual(manifest.interfaces[0]?.web, { entry: "./web/action", export: "default", styles: "./web/styles.css", conventional: true });
+});
