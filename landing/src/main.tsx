@@ -21,8 +21,9 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const REPO = "https://github.com/ChomasDev/ModularAgentOs";
-const DOCS = `${REPO}/blob/main/packages/app-dynamic/README.md`;
+const REPO = "https://github.com/ChomasDev/AgentOs-core";
+const PACKAGES_REPO = "https://github.com/ChomasDev/AgentOs-packages";
+const DOCS = "https://github.com/ChomasDev/appdynamic/blob/main/README.md";
 
 function Mark({ small = false }: { small?: boolean }) {
   return (
@@ -594,7 +595,7 @@ function App() {
             </div>
             <a
               className="text-link"
-              href={`${REPO}/tree/main/packages`}
+              href={PACKAGES_REPO}
               target="_blank"
               rel="noreferrer"
             >
@@ -657,7 +658,7 @@ function App() {
                 <p>{active.description}</p>
                 <a
                   className="text-link"
-                  href={`${REPO}/tree/main/packages/${active.package}`}
+                  href={`${PACKAGES_REPO}/tree/main/${active.package}`}
                   target="_blank"
                   rel="noreferrer"
                 >

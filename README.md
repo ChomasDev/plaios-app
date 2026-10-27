@@ -1,12 +1,14 @@
 # @agent-os/app-dynamic
 
+> Part of [Agent OS](https://github.com/ChomasDev/AgentOs-core). This repo is mounted as the `app-dynamic/` submodule of AgentOs-core and builds inside its pnpm workspace (it depends on `@agent-os/core` and `@agent-os/microfrontend` via `workspace:*`). Clone AgentOs-core with `--recursive` to work on it.
+
 The dynamic Agent OS runtime host. It installs configured capability packages from an npm-compatible registry, loads runtime interfaces and React microfrontends from their manifests, and provides a swappable local control plane.
 
 When the installed graph contains input, output, memory, orchestrator, and agent interfaces, the host also starts the message runtime. Dual-interface packages share their runtime instance, allowing one HTTP adapter to correlate each input request with its matching output response.
 
 ## Start
 
-From an AgentOsv2 workspace:
+From an AgentOs-core checkout:
 
 ```bash
 pnpm agentos start
