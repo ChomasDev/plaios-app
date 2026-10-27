@@ -97,7 +97,11 @@ async function isExactVersionInstalled(
 export function run(command: string, args: readonly string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, stdio: "inherit", shell: false });
-    child.once("error", reject);
+    child.once("error", (error: NodeJS.ErrnoException) => {
+      // No global pnpm (e.g. started with npx): borrow one through npx.
+      if (command === "pnpm" && error.code === "ENOENT") run("npx", ["--yes", "pnpm@10", ...args], cwd).then(resolve, reject);
+      else reject(error);
+    });
     child.once("exit", (code, signal) => {
       if (code === 0) resolve();
       else reject(new Error(`${command} failed${signal ? ` with signal ${signal}` : ` with exit code ${code}`}`));
