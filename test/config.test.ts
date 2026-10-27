@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseDynamicAppConfig, serializeDynamicAppConfig, starterConfig } from "../src/config.js";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { parseDynamicAppConfig, resolveConfigPath, serializeDynamicAppConfig, starterConfig } from "../src/config.js";
 import { parseStartArguments } from "../src/cli.js";
 
 test("parses dynamic component instances and fills server defaults", () => {
@@ -9,7 +13,7 @@ test("parses dynamic component instances and fills server defaults", () => {
 schemaVersion: 1
 registry: http://localhost:4873
 components:
-  - package: "@agent-os/sqlite"
+  - package: "@plaios/sqlite"
     interface: sqlite.database
     config:
       databasePath: ":memory:"
@@ -78,11 +82,21 @@ components:
     config: { mode: fast }
 `);
   assert.deepEqual(config.components[0], {
-    package: "@agent-os/jev-orchestrator",
+    package: "@plaios/jev-orchestrator",
     version: "latest",
     interface: "jev-orchestrator.orchestrator",
     instanceId: "orchestrator:default",
     enabled: undefined,
     config: { mode: "fast" },
   });
+});
+
+test("falls back to agent-os.yaml only when plaios.yaml is missing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "plaios-config-"));
+  assert.equal(resolveConfigPath(directory), join(directory, "plaios.yaml"));
+  await writeFile(join(directory, "agent-os.yaml"), "");
+  assert.equal(resolveConfigPath(directory), join(directory, "agent-os.yaml"));
+  await writeFile(join(directory, "plaios.yaml"), "");
+  assert.equal(resolveConfigPath(directory), join(directory, "plaios.yaml"));
+  assert.equal(resolveConfigPath(directory, "custom.yaml"), join(directory, "custom.yaml"));
 });

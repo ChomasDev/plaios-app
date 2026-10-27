@@ -1,4 +1,4 @@
-import type { ComponentInstance } from "@agent-os/microfrontend";
+import type { ComponentInstance } from "@plaios/microfrontend";
 
 import type { RuntimeComponentDto } from "../../shared/types.js";
 

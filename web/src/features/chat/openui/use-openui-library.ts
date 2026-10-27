@@ -1,4 +1,4 @@
-import type { OpenUIComponentModule } from "@agent-os/microfrontend";
+import type { OpenUIComponentModule } from "@plaios/microfrontend";
 import { defineComponent } from "@openuidev/react-lang";
 import { openuiLibrary } from "@openuidev/react-ui/genui-lib";
 import { useQuery } from "@tanstack/react-query";

@@ -7,7 +7,7 @@ import type {
   Memory,
   Orchestrator,
   OutputInterface,
-} from "@agent-os/core";
+} from "@plaios/core";
 
 import { AgentRuntime } from "./agent-runtime.js";
 import { CapabilityDocsCapability, type CapabilityDocsEntry } from "./capability-docs.js";

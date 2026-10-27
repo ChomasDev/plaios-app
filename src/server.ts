@@ -51,8 +51,8 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
     root: webRoot,
     appType: "spa",
     plugins: [react(), tailwindcss(), runtimeApi(runtime)],
-    resolve: { dedupe: ["react", "react-dom", "@agent-os/microfrontend"] },
-    optimizeDeps: { include: ["react", "react-dom", "react/jsx-runtime", "@agent-os/microfrontend"] },
+    resolve: { dedupe: ["react", "react-dom", "@plaios/microfrontend"] },
+    optimizeDeps: { include: ["react", "react-dom", "react/jsx-runtime", "@plaios/microfrontend"] },
     server: {
       host: config.server.host,
       port: config.server.port,

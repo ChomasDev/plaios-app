@@ -4,7 +4,7 @@ import test from "node:test";
 import { CapabilityDocsCapability, type CapabilityDocsEntry } from "../src/capability-docs.js";
 
 const entry: CapabilityDocsEntry = {
-  packageName: "@agent-os/demo",
+  packageName: "@plaios/demo",
   capability: {
     manifest: { id: "demo.search", version: "1.0.0", name: "search_demo", description: "Searches the demo.", inputSchema: { type: "object" } },
     docs: () => "Use it for demos.",

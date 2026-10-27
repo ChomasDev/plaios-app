@@ -150,7 +150,7 @@ export interface HostSettingsDto {
   registry: string;
   server: { host: string; port: number };
   host: {
-    packageName: "agentos";
+    packageName: "plaios";
     current: string;
     latest?: string;
     updateAvailable: boolean;

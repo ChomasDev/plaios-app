@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { InputInterface, InputListener, OutputContent, OutputInterface } from "@agent-os/core";
+import type { InputInterface, InputListener, OutputContent, OutputInterface } from "@plaios/core";
 
 import { buildOpenUIInstructions } from "./openui-prompt.js";
 import type { AgentRunDto, OpenUIComponentSpec } from "./types.js";
@@ -10,7 +10,7 @@ interface PendingChat { chunks: string[]; run?: AgentRunDto; onDelta?: (delta: s
 /** Chat channel of the control plane UI. Each request runs in its own async context so concurrent chats stay correlated. */
 export class WebChat implements InputInterface, OutputInterface {
   readonly channel = "web" as const;
-  readonly description = "The Agent OS web UI chat that originated this message";
+  readonly description = "The PLAIOS web UI chat that originated this message";
   private components: readonly OpenUIComponentSpec[] = [];
   private prompt = buildOpenUIInstructions();
 

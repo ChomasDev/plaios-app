@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { run } from "./installer.js";
 import type { HostSettingsDto, HostUpdateResult } from "./types.js";
 
-const HOST_PACKAGE = "agentos";
+const HOST_PACKAGE = "plaios";
 const RUNTIME_PACKAGES = [
-  "@agent-os/app-dynamic",
-  "@agent-os/package-manager",
-  "@agent-os/microfrontend",
+  "@plaios/app-dynamic",
+  "@plaios/package-manager",
+  "@plaios/microfrontend",
 ] as const;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 

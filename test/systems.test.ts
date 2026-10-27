@@ -22,7 +22,7 @@ test("manifests published with kind `ai` load as system2", () => {
 });
 
 test("plugins receive System 1 and System 2 they declare, picked by instanceId", () => {
-  const runtime = new DynamicRuntime(".", ".", "agent-os.yaml", { schemaVersion: 1, registry: "", server: { host: "", port: 0 }, components: [] } as never);
+  const runtime = new DynamicRuntime(".", ".", "plaios.yaml", { schemaVersion: 1, registry: "", server: { host: "", port: 0 }, components: [] } as never);
   const jev = { name: "jev" };
   const codex = { name: "codex" };
   const openrouter = { name: "openrouter" };

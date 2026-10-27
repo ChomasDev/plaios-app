@@ -26,7 +26,7 @@ export function buildOpenUIInstructions(plugins: readonly OpenUIComponentSpec[] 
   ]));
   for (const spec of plugins) components[spec.name] = { signature: signatureOf(spec), description: spec.description };
   const componentGroups = names.length
-    ? [...base.componentGroups, { name: "Agent OS", components: names, notes: ["- These render live data from the running Agent OS plugins and come with their own controls; prefer them over hand-built Tables for the same information.", ...plugins.flatMap((spec) => spec.props.filter((prop) => prop.description).map((prop) => `- ${spec.name} ${prop.name}: ${prop.description}`))] }]
+    ? [...base.componentGroups, { name: "PLAIOS", components: names, notes: ["- These render live data from the running PLAIOS plugins and come with their own controls; prefer them over hand-built Tables for the same information.", ...plugins.flatMap((spec) => spec.props.filter((prop) => prop.description).map((prop) => `- ${spec.name} ${prop.name}: ${prop.description}`))] }]
     : base.componentGroups;
   return [
     generateSystemPrompt({ cloud: false, library: { ...base, components, componentGroups }, promptOptions } as unknown as Parameters<typeof generateSystemPrompt>[0]),

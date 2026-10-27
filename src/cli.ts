@@ -34,13 +34,13 @@ export function parseStartArguments(argv: readonly string[]): StartArguments {
 }
 
 export function printStartHelp(): void {
-  console.log(`Start the dynamic Agent OS control plane.
+  console.log(`Start the dynamic PLAIOS control plane.
 
 Usage:
-  agentos start [options]
+  plaios start [options]
 
 Options:
-  -c, --config <path>    Config file (default: agent-os.yaml)
+  -c, --config <path>    Config file (default: plaios.yaml)
   -r, --registry <url>   Override package registry URL
       --host <host>      Override server host
   -p, --port <port>      Override server port

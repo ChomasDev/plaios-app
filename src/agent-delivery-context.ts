@@ -1,4 +1,4 @@
-import type { InputMessage, OutputInterface } from "@agent-os/core/domain";
+import type { InputMessage, OutputInterface } from "@plaios/core/domain";
 
 /** Tells the model where the reply goes and how that destination wants it formatted. */
 export function addDeliveryContext(message: InputMessage, output: OutputInterface): InputMessage {
@@ -9,7 +9,7 @@ export function addDeliveryContext(message: InputMessage, output: OutputInterfac
     text: [
       message.text,
       "Delivery context:",
-      `Agent OS will deliver your final response to the ${output.channel} output.`,
+      `PLAIOS will deliver your final response to the ${output.channel} output.`,
       "Write the exact content intended for that destination. Do not claim that delivery requires a tool or is unavailable.",
     ].join("\n\n"),
     metadata,

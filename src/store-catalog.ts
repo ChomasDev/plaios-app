@@ -2,14 +2,14 @@ import { latestPackageVersion } from "./host-settings.js";
 import { isRecord, type InterfaceKind, type RuntimeSnapshot, type StorePackageDetailDto, type StorePackageDto } from "./types.js";
 
 const HIDDEN_STORE_PACKAGES = new Set([
-  "agentos",
-  "@agent-os/app-dynamic",
-  "@agent-os/package-manager",
-  "@agent-os/microfrontend",
-  // Renamed to @agent-os/jev-orchestrator.
-  "@agent-os/jev-orhcestator",
-  "@agent-os/core",
-  "@agent-os/cli",
+  "plaios",
+  "@plaios/app-dynamic",
+  "@plaios/package-manager",
+  "@plaios/microfrontend",
+  // Renamed to @plaios/jev-orchestrator.
+  "@plaios/jev-orhcestator",
+  "@plaios/core",
+  "@plaios/cli",
 ]);
 
 export interface RegistryPackage {
@@ -30,8 +30,9 @@ export function isStoreCatalogPackage(
   if (installed) return true;
   if (HIDDEN_STORE_PACKAGES.has(name)) return false;
   return keywords.includes("capability") ||
+    keywords.includes("plaios") ||
     keywords.includes("agent-os") ||
-    name.startsWith("@agent-os/");
+    name.startsWith("@plaios/");
 }
 
 export function kindsFromKeywords(keywords: readonly string[]): InterfaceKind[] {

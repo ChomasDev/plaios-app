@@ -1,4 +1,4 @@
-import type { OpenUIComponentModule } from "@agent-os/microfrontend";
+import type { OpenUIComponentModule } from "@plaios/microfrontend";
 import { memo } from "react";
 
 import { openComponent } from "../../../app/routes.js";

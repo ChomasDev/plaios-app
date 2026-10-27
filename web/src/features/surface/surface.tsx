@@ -1,4 +1,4 @@
-import { CapabilityMicrofrontend, type MicrofrontendComponent } from "@agent-os/microfrontend";
+import { CapabilityMicrofrontend, type MicrofrontendComponent } from "@plaios/microfrontend";
 import { useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useMemo } from "react";
 

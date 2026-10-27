@@ -1,4 +1,4 @@
-import { cn } from "@agent-os/microfrontend";
+import { cn } from "@plaios/microfrontend";
 
 import { splitName } from "./package-format.js";
 

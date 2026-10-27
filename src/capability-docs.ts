@@ -1,4 +1,4 @@
-import type { Capability, CapabilityManifest, CapabilityResult, UIComponentSpec } from "@agent-os/core/domain";
+import type { Capability, CapabilityManifest, CapabilityResult, UIComponentSpec } from "@plaios/core/domain";
 
 /** What the host knows about one live capability, gathered by the runtime when the tool runs. */
 export interface CapabilityDocsEntry {

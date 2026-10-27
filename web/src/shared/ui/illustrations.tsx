@@ -2,7 +2,7 @@ import { motion, type Transition } from "framer-motion";
 import type { ReactNode } from "react";
 
 /*
- * Flat, unDraw-style scenes drawn for Agent OS: one accent (the theme's primary) over neutral tokens,
+ * Flat, unDraw-style scenes drawn for PLAIOS: one accent (the theme's primary) over neutral tokens,
  * so every scene follows light and dark mode. Each has one slow idle motion and nothing that blinks.
  */
 

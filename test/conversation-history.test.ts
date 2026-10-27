@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { InputMessage, Memory, MemoryEntry } from "@agent-os/core/domain";
+import type { InputMessage, Memory, MemoryEntry } from "@plaios/core/domain";
 
 import { ConversationHistory } from "../src/agent-conversation-history.js";
 

@@ -6,7 +6,7 @@ import type {
   Memory,
   Orchestrator,
   OutputInterface,
-} from "@agent-os/core";
+} from "@plaios/core";
 
 import { ConversationHistory } from "./agent-conversation-history.js";
 import { addDeliveryContext } from "./agent-delivery-context.js";
@@ -53,7 +53,7 @@ export class AgentRuntime {
     await this.running?.catch(() => undefined);
     this.running = undefined;
     const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-    if (errors.length) throw new AggregateError(errors, "Failed to stop Agent OS inputs");
+    if (errors.length) throw new AggregateError(errors, "Failed to stop PLAIOS inputs");
   }
 
   private async handle(message: InputMessage, history: ConversationHistory): Promise<void> {

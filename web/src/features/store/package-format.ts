@@ -1,7 +1,7 @@
 const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 const STEPS: Array<[Intl.RelativeTimeFormatUnit, number]> = [["year", 31_536_000], ["month", 2_592_000], ["week", 604_800], ["day", 86_400], ["hour", 3_600], ["minute", 60]];
 
-/** `@agent-os/action-ssh` → `{ scope: "@agent-os", short: "action-ssh" }`. */
+/** `@plaios/action-ssh` → `{ scope: "@plaios", short: "action-ssh" }`. */
 export function splitName(name: string): { scope?: string; short: string } {
   const match = /^(@[^/]+)\/(.+)$/.exec(name);
   return match ? { scope: match[1], short: match[2]! } : { short: name };

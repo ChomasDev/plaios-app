@@ -1,4 +1,4 @@
-import { cn } from "@agent-os/microfrontend";
+import { cn } from "@plaios/microfrontend";
 import type { ReactNode } from "react";
 
 export function Page({ title, intro, aside, wide, children }: { title: ReactNode; intro?: ReactNode; aside?: ReactNode; wide?: boolean; children?: ReactNode }) {

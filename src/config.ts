@@ -1,23 +1,24 @@
+import { existsSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import { isRecord, type DynamicAppConfig, type DynamicComponentConfig } from "./types.js";
 
-export const DEFAULT_CONFIG_FILE = "agent-os.yaml";
+export const DEFAULT_CONFIG_FILE = "plaios.yaml";
 export const DEFAULT_REGISTRY = "http://localhost:4873";
 
 export function parseDynamicAppConfig(source: string): DynamicAppConfig {
   const value: unknown = parseYaml(source);
-  if (!isRecord(value)) throw new Error("Agent OS config must be a YAML object");
-  if (value.schemaVersion !== 1) throw new Error('Agent OS config "schemaVersion" must be 1');
+  if (!isRecord(value)) throw new Error("PLAIOS config must be a YAML object");
+  if (value.schemaVersion !== 1) throw new Error('PLAIOS config "schemaVersion" must be 1');
   const registry = requiredUrl(value.registry, "registry");
   const serverValue = value.server === undefined ? {} : value.server;
-  if (!isRecord(serverValue)) throw new Error('Agent OS config "server" must be an object');
+  if (!isRecord(serverValue)) throw new Error('PLAIOS config "server" must be an object');
   const host = optionalText(serverValue.host, "server.host") ?? "0.0.0.0";
   const port = optionalPort(serverValue.port) ?? 3100;
   if (!Array.isArray(value.components)) {
-    throw new Error('Agent OS config "components" must be an array');
+    throw new Error('PLAIOS config "components" must be an array');
   }
   const components = value.components.map(parseComponent);
   const instanceIds = new Set<string>();
@@ -65,21 +66,21 @@ export function starterConfig(): DynamicAppConfig {
     server: { host: "0.0.0.0", port: 3100 },
     components: [
       {
-        package: "@agent-os/sqlite",
+        package: "@plaios/sqlite",
         version: "latest",
         interface: "sqlite.database",
         instanceId: "database:main",
         config: { databasePath: ".agent-os/data/agent-os.sqlite" },
       },
       {
-        package: "@agent-os/telegram",
+        package: "@plaios/telegram",
         version: "latest",
         interface: "telegram.input",
         instanceId: "input:telegram",
         config: {},
       },
       {
-        package: "@agent-os/telegram",
+        package: "@plaios/telegram",
         version: "latest",
         interface: "telegram.output",
         instanceId: "output:telegram",
@@ -89,16 +90,30 @@ export function starterConfig(): DynamicAppConfig {
   };
 }
 
+// Config file name before the PLAIOS rename; still used when it is the only one present.
+const LEGACY_CONFIG_FILE = "agent-os.yaml";
+
 export function resolveConfigPath(currentDirectory: string, path?: string): string {
-  return resolve(currentDirectory, path ?? process.env.AGENT_OS_CONFIG ?? DEFAULT_CONFIG_FILE);
+  const explicit = path ?? process.env.AGENT_OS_CONFIG;
+  if (explicit) return resolve(currentDirectory, explicit);
+  const legacy = resolve(currentDirectory, LEGACY_CONFIG_FILE);
+  return !existsSync(resolve(currentDirectory, DEFAULT_CONFIG_FILE)) && existsSync(legacy)
+    ? legacy
+    : resolve(currentDirectory, DEFAULT_CONFIG_FILE);
 }
 
 // Packages published under a misspelled name; configs that still use it are moved to the new one on load.
 const RENAMED_PACKAGES: Record<string, { package: string; from: string; to: string }> = {
-  "@agent-os/jev-orhcestator": { package: "@agent-os/jev-orchestrator", from: "jev-orhcestator.", to: "jev-orchestrator." },
+  "@plaios/jev-orhcestator": { package: "@plaios/jev-orchestrator", from: "jev-orhcestator.", to: "jev-orchestrator." },
 };
+// Scope used before the PLAIOS rename.
+const LEGACY_SCOPE = "@agent-os/";
 
 function migrateComponent(component: DynamicComponentConfig): DynamicComponentConfig {
+  if (component.package.startsWith(LEGACY_SCOPE)) {
+    // Old versions were never published under the new scope.
+    component = { ...component, package: `@plaios/${component.package.slice(LEGACY_SCOPE.length)}`, version: "latest" };
+  }
   const renamed = RENAMED_PACKAGES[component.package];
   if (!renamed) return component;
   return {

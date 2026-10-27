@@ -20,7 +20,7 @@ export function App() {
 
 function AppBody({ route, runtime }: { route: Route; runtime: ReturnType<typeof useRuntime> }) {
   if (runtime.data) return <Workspace route={route} components={runtime.data.components} />;
-  if (runtime.isError) return <div className="mx-auto w-full max-w-xl p-10"><EmptyState art={<UnpluggedScene />} title="Agent OS is not answering" hint={runtime.error.message} /></div>;
+  if (runtime.isError) return <div className="mx-auto w-full max-w-xl p-10"><EmptyState art={<UnpluggedScene />} title="PLAIOS is not answering" hint={runtime.error.message} /></div>;
   return <Booting />;
 }
 

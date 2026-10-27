@@ -21,9 +21,9 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const REPO = "https://github.com/ChomasDev/AgentOs-core";
-const PACKAGES_REPO = "https://github.com/ChomasDev/AgentOs-packages";
-const DOCS = "https://github.com/ChomasDev/appdynamic/blob/main/README.md";
+const REPO = "https://github.com/ChomasDev/plaios";
+const PACKAGES_REPO = "https://github.com/ChomasDev/plaios-packages";
+const DOCS = "https://github.com/ChomasDev/plaios-app/blob/main/README.md";
 
 function Mark({ small = false }: { small?: boolean }) {
   return (
@@ -299,7 +299,7 @@ const capabilities = [
     package: "memory-graph",
     file: "memory.yaml",
     lines: [
-      'package: "@agent-os/memory-graph"',
+      'package: "@plaios/memory-graph"',
       "interface: memory-graph.memory",
       "instanceId: memory:main",
       "config:",
@@ -317,7 +317,7 @@ const capabilities = [
     package: "action-cli",
     file: "action.yaml",
     lines: [
-      'package: "@agent-os/action-cli"',
+      'package: "@plaios/action-cli"',
       "interface: action-cli.action",
       "instanceId: action:cli",
       "config:",
@@ -368,8 +368,8 @@ const installModes = [
     name: "From source",
     title: "Make yourself at home.",
     lines: [
-      "git clone https://github.com/ChomasDev/ModularAgentOs.git",
-      "cd ModularAgentOs",
+      "git clone --recursive https://github.com/ChomasDev/plaios.git",
+      "cd plaios",
       "pnpm install",
       "pnpm build",
     ],
@@ -378,13 +378,13 @@ const installModes = [
   {
     name: "Start the runtime",
     title: "Bring your system online.",
-    lines: ["pnpm agentos start"],
-    note: "Run from your installed workspace. Configure the npm-compatible registry in agent-os.yaml and make sure your capability packages are available there.",
+    lines: ["pnpm plaios start"],
+    note: "Run from your installed workspace. Configure the npm-compatible registry in plaios.yaml and make sure your capability packages are available there.",
   },
   {
     name: "Build a plugin",
     title: "Give it a new capability.",
-    lines: ["pnpm agentos create input,output my-plugin --yes"],
+    lines: ["pnpm plaios create input,output my-plugin --yes"],
     note: "Run from your installed workspace. Generates typed input and output interfaces, a package manifest, and React management screens.",
   },
 ];
@@ -652,7 +652,7 @@ function App() {
             >
               <div className="capability-copy">
                 <span className="package-label">
-                  @agent-os/{active.package}
+                  @plaios/{active.package}
                 </span>
                 <h3>{active.title}</h3>
                 <p>{active.description}</p>

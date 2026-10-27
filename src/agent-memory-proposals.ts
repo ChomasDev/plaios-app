@@ -3,7 +3,7 @@ import type {
   InputMessage,
   Memory,
   MemoryProposal,
-} from "@agent-os/core/domain";
+} from "@plaios/core/domain";
 
 export async function persistMemoryProposals(
   memory: Memory,

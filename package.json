@@ -1,9 +1,9 @@
 {
-  "name": "@agent-os/app-dynamic",
+  "name": "@plaios/app-dynamic",
   "version": "0.8.1",
-  "description": "Dynamic Agent OS runtime host and swappable microfrontend control plane",
+  "description": "Dynamic PLAIOS runtime host and swappable microfrontend control plane",
   "keywords": [
-    "agent-os",
+    "plaios",
     "dynamic",
     "runtime",
     "microfrontend",
@@ -12,7 +12,7 @@
   "private": false,
   "type": "module",
   "bin": {
-    "agentos-app": "./dist/src/cli.js"
+    "plaios-app": "./dist/src/cli.js"
   },
   "files": [
     "dist",
@@ -40,8 +40,8 @@
     "landing:preview": "vite preview landing --outDir ../dist/landing --host 127.0.0.1"
   },
   "dependencies": {
-    "@agent-os/core": "workspace:*",
-    "@agent-os/microfrontend": "workspace:*",
+    "@plaios/core": "workspace:*",
+    "@plaios/microfrontend": "workspace:*",
     "@fontsource-variable/noto-sans": "^5.2.8",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@openuidev/lang-core": "1.0.1",

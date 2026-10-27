@@ -8,7 +8,7 @@ import type {
   MemoryEntry,
   Orchestrator,
   OutputInterface,
-} from "@agent-os/core";
+} from "@plaios/core";
 
 import { AgentRuntime } from "../src/agent-runtime.js";
 import { Telemetry } from "../src/telemetry.js";

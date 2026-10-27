@@ -1,4 +1,4 @@
-import { cn } from "@agent-os/microfrontend";
+import { cn } from "@plaios/microfrontend";
 import { AnimatePresence, motion } from "framer-motion";
 import { History, LayoutGrid, Package, Settings, X, type LucideIcon } from "lucide-react";
 

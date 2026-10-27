@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { InputMessage, Memory, MemoryEntry } from "@agent-os/core/domain";
+import type { InputMessage, Memory, MemoryEntry } from "@plaios/core/domain";
 
 import {
   findMatchingProtocol,
