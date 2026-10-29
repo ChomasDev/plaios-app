@@ -1,15 +1,16 @@
-# AgentOS landing page
+# PLAIOS landing page
 
-Standalone React/Vite marketing site, separate from the runtime control plane. Uses the existing app-dynamic dependencies; no agent runtime or secrets are needed.
+Standalone React/Vite marketing site, separate from the runtime control plane. It reuses the app's tokens (`microfrontend` globals), Noto Sans and springs, and the existing app-dynamic dependencies (React, framer-motion, lucide). No runtime or secrets needed.
 
 From the workspace root:
 
 ```sh
-pnpm landing:dev
-pnpm landing:build
+pnpm landing:dev       # http://127.0.0.1:5173
+pnpm landing:build     # dist/landing, prerendered
 pnpm landing:preview
+pnpm landing:deploy    # build + upload dist/landing to Vercel (production)
 ```
 
-The production output is `packages/app-dynamic/dist/landing`. Deploy that folder to any static host. Fonts use Google Fonts, with local sans-serif and monospace fallbacks.
+`landing:build` makes the client bundle, then an SSR bundle of `src/server.tsx`, and `prerender.mjs` bakes the rendered HTML into `dist/landing/index.html` so crawlers get the full page. Deploy `dist/landing` to any static host; `landing:deploy` uploads it to Vercel (run `npx vercel login` once). Vercel can't build from git here because the deps are `workspace:*`. Once it has a domain, add `<link rel="canonical">`, `og:url`, `og:image` (absolute URLs) and a `robots.txt`/`sitemap.xml`.
 
-The ASCII canvas supports mouse/touch dragging and arrow-key rotation. Automatic rotation pauses during a drag, preserves the chosen orientation on release, respects reduced motion, and includes a pause control. Rendering is suspended offscreen or in background tabs; manual rotation still works while paused. Capability tabs support arrow keys, Home, and End. Setup commands are deliberately explicit about the current registry requirements.
+Motion respects `prefers-reduced-motion`; the flow section's steps are keyboard-reachable tabs.
