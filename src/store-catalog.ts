@@ -55,8 +55,8 @@ export function kindsFromKeywords(keywords: readonly string[]): InterfaceKind[] 
 export async function searchRegistry(registry: string): Promise<RegistryPackage[]> {
   try {
     const endpoint = new URL("/-/v1/search", `${registry}/`);
-    // An empty query keeps local Verdaccio catalogs fast and avoids an uplink search.
-    endpoint.searchParams.set("text", "");
+    // Every PLAIOS package carries the "plaios" keyword; Verdaccio rejects an empty query with 400.
+    endpoint.searchParams.set("text", "plaios");
     endpoint.searchParams.set("size", "250");
     const response = await fetch(endpoint, {
       headers: { accept: "application/json" },

@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
-import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -61,7 +62,7 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
       // Plugin modules are served through /@fs/, so keep databases and secrets out of reach. The first four are Vite's defaults.
       fs: {
         strict: true,
-        allow: [packageRoot, projectRoot, runtimeRoot],
+        allow: [packageRoot, projectRoot, runtimeRoot, dependencyRoot(packageRoot)],
         deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/.agent-os/data/**", "*.{sqlite,sqlite3,db}", "*.{sqlite,db}-{wal,shm,journal}"],
       },
     },
@@ -241,4 +242,14 @@ function installSignalHandlers(handle: DynamicAppHandle): void {
   const shutdown = () => void handle.close().finally(() => process.exit());
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+}
+
+/**
+ * The node_modules folder the web UI's own dependencies (fonts, React) resolve from: the workspace
+ * store in a repo checkout, the npx cache otherwise. Both sit outside packageRoot.
+ */
+function dependencyRoot(packageRoot: string): string {
+  const resolved = createRequire(join(packageRoot, "package.json")).resolve("@fontsource-variable/noto-sans/package.json");
+  const index = resolved.indexOf(`${sep}node_modules${sep}`);
+  return index === -1 ? dirname(resolved) : resolved.slice(0, index + `${sep}node_modules`.length);
 }
