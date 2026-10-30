@@ -28,7 +28,7 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 a { color: inherit; text-decoration: none; }
 h1, h2, h3, p { margin: 0; }
@@ -233,3 +233,37 @@ h2 { margin-top: 16px; font-size: clamp(36px, 5.4vw, 68px); line-height: 1.04; l
   .plugin-groups, .principles { grid-template-columns: 1fr; }
   .terminal-body { font-size: 12px; min-height: 0; }
 }
+
+/* /docs/: the Developer guide plugin's own markup (see developer-guide/web/guide.css); these stand in for the few Tailwind utilities it uses. */
+.docs { padding: 112px 0 72px; }
+/* Clear the fixed nav: the guide's sidebar and chapter anchors assume nothing sits on top. */
+.docs .dg-toc { top: 88px; max-height: calc(100svh - 112px); }
+.docs .dg-chapter, .docs .dg-h2, .docs .dg-h3 { scroll-margin-top: 88px; }
+.docs ul { list-style: none; padding: 0; margin: 0; }
+.docs ul.list-disc { list-style: disc; padding-left: 1.3rem; }
+.docs .list-decimal { list-style: decimal; padding-left: 1.3rem; }
+.docs .w-full { width: 100%; }
+.docs .h-auto { height: auto; }
+.docs .min-w-\[720px\] { min-width: 720px; }
+.docs .select-none { user-select: none; }
+.docs .cursor-pointer { cursor: pointer; }
+.docs .outline-none { outline: none; }
+.docs .font-medium { font-weight: 500; }
+.docs .text-\[11px\] { font-size: 11px; }
+.docs .text-\[13px\] { font-size: 13px; }
+.docs .size-3\.5 { width: 0.875rem; height: 0.875rem; }
+.docs .text-primary { color: var(--primary); }
+.docs .text-primary-foreground { color: #fff; }
+.docs .fill-background { fill: var(--background); }
+.docs .fill-foreground { fill: var(--foreground); }
+.docs .fill-muted-foreground { fill: var(--muted-foreground); }
+.docs .fill-foreground\/30 { fill: color-mix(in oklab, var(--foreground) 30%, transparent); }
+.docs .fill-primary { fill: var(--primary); }
+.docs .fill-primary\/60 { fill: color-mix(in oklab, var(--primary) 60%, transparent); }
+.docs .fill-primary\/12 { fill: color-mix(in oklab, var(--primary) 12%, transparent); }
+.docs .fill-primary\/10 { fill: color-mix(in oklab, var(--primary) 10%, transparent); }
+.docs .stroke-primary { stroke: var(--primary); }
+.docs .stroke-foreground\/15 { stroke: color-mix(in oklab, var(--foreground) 15%, transparent); }
+.docs .stroke-foreground\/25 { stroke: color-mix(in oklab, var(--foreground) 25%, transparent); }
+.docs .stroke-primary-foreground\/70 { stroke: oklch(1 0 0 / 70%); }
+.docs .dg-copy { border: 0; background: none; color: var(--muted-foreground); cursor: pointer; }

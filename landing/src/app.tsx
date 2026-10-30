@@ -39,6 +39,7 @@ const REPO = "https://github.com/ChomasDev/plaios";
 const PACKAGES_REPO = "https://github.com/ChomasDev/plaios-packages";
 const DOCS = `${REPO}/blob/main/docs/how-to-run.md`;
 const CLONE = "git clone --recursive https://github.com/ChomasDev/plaios";
+const START = "npx plaios";
 
 /** The app's springs (web/src/shared/motion.ts), so the site moves like the product. */
 const SPRING = { type: "spring", stiffness: 158, damping: 20, mass: 1 } as const;
@@ -83,7 +84,7 @@ function CopyCommand({ command, label = command }: { command: string; label?: st
   </button>;
 }
 
-function Nav() {
+export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -93,12 +94,12 @@ function Nav() {
   }, []);
   return <header className={scrolled ? "nav scrolled" : "nav"}>
     <div className="wrap nav-inner">
-      <a href="#top" className="brand" aria-label="PLAIOS home"><Mark /><span>PLAIOS</span></a>
+      <a href="/" className="brand" aria-label="PLAIOS home"><Mark /><span>PLAIOS</span></a>
       <nav aria-label="Main" className="nav-links">
-        <a href="#flow">How it works</a>
-        <a href="#plugins">Plugins</a>
-        <a href="#build">Build</a>
-        <a href={DOCS}>Docs</a>
+        <a href="/#flow">How it works</a>
+        <a href="/#plugins">Plugins</a>
+        <a href="/#build">Build</a>
+        <a href="/docs/">Docs</a>
       </nav>
       <a href={REPO} className="pill pill-dark nav-cta"><Github size={15} aria-hidden="true" />GitHub</a>
     </div>
@@ -232,6 +233,7 @@ function Hero() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: EASE_OUT, delay: 0.5 }}
       >
+        <CopyCommand command={START} />
         <a href="#start" className="pill pill-primary">Get started<ArrowRight size={16} aria-hidden="true" /></a>
         <a href="#flow" className="pill pill-ghost">See how it thinks</a>
       </motion.div>
@@ -401,21 +403,21 @@ function Plugins() {
 }
 
 const TERMINAL: Array<[string, string]> = [
-  ["cmd", "pnpm plaios"],
-  ["out", "Welcome to PLAIOS. Let's set up your agent."],
-  ["q", "Which AI should power the agent?"],
-  ["opt", "  1. Codex, signed in with codex login"],
-  ["opt", "  2. Codex, with an OpenAI API key"],
-  ["a", "Choose [1]: 1"],
-  ["q", "Where else do you want to talk to it?"],
-  ["opt", "  1. Telegram bot   2. OpenAI-compatible API   3. Live voice"],
-  ["a", "Numbers, comma-separated: 1"],
-  ["q", "Which tools should it have?"],
-  ["a", "Numbers, comma-separated: 1, 2"],
-  ["a", "Telegram bot token: ••••••••••••"],
-  ["ok", "✓ Saved plaios.yaml and .env"],
-  ["ok", "✓ PLAIOS is live on http://localhost:3100"],
-];
+  ["cmd", "npx plaios"],
+  ["out", "PLAIOS · the pluggable AI operating system"],
+  ["q", "1/7  Which AI should power the agent?"],
+  ["a", "     ◉ ✦ Codex with your ChatGPT account"],
+  ["q", "4/7  How do you want to reach it?"],
+  ["a", "     ▣ ✈ Telegram bot   ▣ ◷ Scheduled prompts"],
+  ["q", "5/7  What should it be able to do?"],
+  ["a", "     ▣ ⌕ Web search   ▣ ⌂ Home Assistant"],
+  ["q", "6/7  Enter keys now for… (unpick to set up later)"],
+  ["opt", "     ▣ Telegram bot   □ Home Assistant, later"],
+  ["q", "7/7  Where should plugins be installed from?"],
+  ["a", "     ◉ ☁ Public npm   ○ ⌂ Local registry"],
+  ["q", "Start PLAIOS now?  Yes"],
+  ["ok", "● PLAIOS is running  ➜  http://localhost:3100"],
+]
 
 function Onboard() {
   const ref = useRef<HTMLDivElement>(null);
@@ -425,15 +427,18 @@ function Onboard() {
       <Reveal className="split-copy">
         <p className="kicker">Get started</p>
         <h2>One command.<br /><span className="soft">Then just answer.</span></h2>
-        <p className="sub">The first run asks which AI to use, where you want to talk to it and which tools it gets. It writes the config, keeps the secrets in <code>.env</code> and starts.</p>
+        <p className="sub">Run it in an empty folder. It asks which AI to use, where you want to talk to it and what it can do, lets you leave any key for later, writes the config, keeps the secrets in <code>.env</code> and starts. Needs Node.js 22.5 or newer.</p>
+        <div className="steps-list">
+          <CopyCommand command={START} />
+        </div>
+        <p className="sub">Or build it from source:</p>
         <div className="steps-list">
           <CopyCommand command={CLONE} label="git clone --recursive …/plaios" />
-          <CopyCommand command="pnpm install && pnpm build" />
-          <CopyCommand command="pnpm plaios" />
+          <CopyCommand command="pnpm install && pnpm build && pnpm plaios" />
         </div>
       </Reveal>
       <div ref={ref} className="terminal" aria-label="Example of the PLAIOS setup wizard" role="img">
-        <div className="terminal-bar"><i /><i /><i /><span>~/plaios</span></div>
+        <div className="terminal-bar"><i /><i /><i /><span>~/my-agent</span></div>
         <div className="terminal-body">
           {TERMINAL.map(([kind, text], index) => <motion.div
             key={index}
@@ -495,6 +500,7 @@ function Build() {
           <li><Check size={16} aria-hidden="true" />Dependencies injected by the host</li>
           <li><Check size={16} aria-hidden="true" /><code>plaios create action weather</code> scaffolds it</li>
         </ul>
+        <a href="/docs/" className="link">Read the developer guide<ArrowUpRight size={15} aria-hidden="true" /></a>
       </Reveal>
     </div>
   </section>;
@@ -530,9 +536,9 @@ function Closing() {
     <div className="wrap narrow center">
       <Reveal>
         <h2 className="closing-title">The next platform<br /><span className="soft">is yours to build.</span></h2>
-        <p className="sub">Clone it, start it, make it think your way.</p>
+        <p className="sub">One command to start it. Then make it think your way.</p>
         <div className="hero-actions">
-          <CopyCommand command={CLONE} label="git clone --recursive …/plaios" />
+          <CopyCommand command={START} />
           <a href={REPO} className="pill pill-dark"><Github size={16} aria-hidden="true" />Star on GitHub</a>
         </div>
       </Reveal>
@@ -540,15 +546,15 @@ function Closing() {
   </section>;
 }
 
-function Footer() {
+export function Footer() {
   return <footer className="footer">
     <div className="wrap footer-inner">
-      <a href="#top" className="brand"><Mark /><span>PLAIOS</span></a>
+      <a href="/" className="brand"><Mark /><span>PLAIOS</span></a>
       <nav aria-label="Footer" className="footer-links">
         <a href={REPO}>Core</a>
         <a href={PACKAGES_REPO}>Packages</a>
         <a href={DOCS}>How to run</a>
-        <a href={`${REPO}/tree/main/developer-guide`}>Developer guide</a>
+        <a href="/docs/">Developer guide</a>
       </nav>
       <p>The Pluggable AI Operating System. Say it “PLAY-os”.</p>
     </div>
