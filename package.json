@@ -38,7 +38,7 @@
     "landing:dev": "vite landing --host 127.0.0.1",
     "landing:build": "vite build landing --outDir ../dist/landing --emptyOutDir && vite build landing --ssr src/server.tsx --outDir ../dist/landing-ssr --emptyOutDir && node landing/prerender.mjs",
     "landing:preview": "vite preview landing --outDir ../dist/landing --host 127.0.0.1",
-    "landing:deploy": "pnpm landing:build && npx vercel deploy dist/landing --prod"
+    "landing:deploy": "pnpm landing:build && node landing/vercel-output.mjs && npx vercel deploy --prebuilt --prod"
   },
   "dependencies": {
     "@plaios/core": "workspace:*",
