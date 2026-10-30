@@ -1,6 +1,6 @@
 {
   "name": "@plaios/app-dynamic",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Dynamic PLAIOS runtime host and swappable microfrontend control plane",
   "keywords": [
     "plaios",

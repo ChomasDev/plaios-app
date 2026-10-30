@@ -2,6 +2,7 @@
 
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { styleText } from "node:util";
 
 import { startDynamicApp, type StartDynamicAppOptions } from "./server.js";
 
@@ -52,8 +53,13 @@ export async function runStart(argv: readonly string[], currentDirectory = proce
   const options = parseStartArguments(argv);
   if (options.help) return printStartHelp();
   const handle = await startDynamicApp({ ...options, currentDirectory });
-  console.log(`[dynamic] config ${handle.configPath}`);
-  console.log(`[dynamic] control plane ${handle.url}`);
+  console.log(`
+  ${styleText("green", "●")} ${styleText("bold", "PLAIOS is running")}
+
+  ${styleText("cyan", "➜")}  Open    ${styleText(["cyan", "bold"], handle.url)}
+  ${styleText("dim", `   Config  ${handle.configPath}`)}
+  ${styleText("dim", "   Stop    Ctrl+C")}
+`);
 }
 
 const isEntrypoint = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);

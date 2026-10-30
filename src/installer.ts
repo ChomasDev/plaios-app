@@ -74,8 +74,12 @@ async function initializeRuntimeRoot(runtimeRoot: string): Promise<void> {
     await writeFile(packagePath, `${JSON.stringify({ name: "agent-os-runtime", private: true, type: "module" }, null, 2)}\n`, "utf8");
   }
   const workspacePath = join(runtimeRoot, "pnpm-workspace.yaml");
-  if (!(await exists(workspacePath))) {
-    await writeFile(workspacePath, "packages: []\n", "utf8");
+  if (!(await exists(workspacePath))) await writeFile(workspacePath, "packages: []\n", "utf8");
+  // pnpm 11 fails the whole install when a dependency's build script is skipped (esbuild under
+  // God's Eye View); plugins never need those scripts, so keep them skipped but only warn.
+  const workspace = await readFile(workspacePath, "utf8");
+  if (!/^strictDepBuilds:/m.test(workspace)) {
+    await writeFile(workspacePath, `${workspace.replace(/\n?$/, "\n")}strictDepBuilds: false\n`, "utf8");
   }
 }
 
