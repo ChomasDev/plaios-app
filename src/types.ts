@@ -167,8 +167,59 @@ export interface HostSettingsDto {
   registryReachable: boolean;
 }
 
+/** A file the user attached in the web chat; `GET /api/uploads/file?id=` serves it. */
+export interface ChatAttachmentDto { id: string; name: string; mediaType: string; size: number }
+
+/** One question and everything the agent did to answer it, as the chat shows it. */
+export interface ChatTurnDto {
+  /** Client clock when asked; also the turn id the server streams under. */
+  id: number;
+  question: string;
+  attachments?: ChatAttachmentDto[];
+  answer?: string;
+  steps?: ChatStep[];
+  components: string[];
+  error?: string;
+  streaming?: boolean;
+  /** When the turn finished; the work log measures from the question (`id`) to here. */
+  endedAt?: string;
+}
+
+/** Sidebar state, after T3 Code's thread pills; null once the user has seen how it ended. */
+export type ConversationStatus = "working" | "awaiting-input" | "failed" | "completed";
+
+export interface ConversationSummaryDto {
+  id: string;
+  title: string;
+  startedAt: string;
+  updatedAt: string;
+  turnCount: number;
+  status: ConversationStatus | null;
+}
+export interface ConversationDto extends Omit<ConversationSummaryDto, "turnCount" | "status"> { turns: ChatTurnDto[] }
+
+export interface PlanItem { text: string; status: "pending" | "in_progress" | "done" }
+
 /** One line of the chat's work log; a later step with the same id updates it. */
-export interface ChatStep { id: string; label: string; status: "running" | "done" | "failed"; detail?: string }
+export interface ChatStep {
+  id: string;
+  label: string;
+  status: "running" | "done" | "failed";
+  /** One-line preview shown next to the label. */
+  detail?: string;
+  /** Sub-agent steps nest under the step that started them. */
+  parentId?: string;
+  kind?: "plan" | "tool" | "agent" | "todo" | "thought";
+  /** Appended to `output`: streamed thinking sends only what is new. */
+  delta?: string;
+  /** The agent's checklist, for `todo` steps. */
+  items?: PlanItem[];
+  startedAt?: string;
+  endedAt?: string;
+  /** Full arguments and result, shown when the line is expanded. */
+  input?: string;
+  output?: string;
+}
 
 export interface HostLogEntry { seq: number; at: string; level: "debug" | "info" | "warn" | "error"; text: string }
 

@@ -1,10 +1,11 @@
+import type { ChatAttachmentDto } from "../../shared/types.js";
 import type { Step, Turn } from "../conversations/use-conversations.js";
 
 interface StreamEvent { delta?: string; step?: Step; done?: boolean; components?: string[]; error?: string }
 
 /** Starts a turn on the server and follows it. */
-export async function streamAnswer(question: string, sessionId: string, turnId: number, patch: (fields: Partial<Turn>) => void): Promise<void> {
-  const response = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: question, sessionId, turnId: String(turnId) }) });
+export async function streamAnswer(question: string, sessionId: string, turnId: number, patch: (fields: Partial<Turn>) => void, attachments: ChatAttachmentDto[] = []): Promise<void> {
+  const response = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: question, sessionId, turnId: String(turnId), attachments: attachments.map(({ id }) => id) }) });
   return readTurn(response, patch);
 }
 
@@ -37,13 +38,16 @@ async function readTurn(response: Response, patch: (fields: Partial<Turn>) => vo
       if (event.error) throw new Error(event.error);
       if (event.step) { steps = mergeStep(steps, event.step); patch({ steps }); }
       if (event.delta) { answer = (answer ?? "") + event.delta; patch({ answer }); }
-      if (event.done) patch({ answer: answer ?? "", components: event.components ?? [], streaming: false });
+      if (event.done) patch({ answer: answer ?? "", components: event.components ?? [], streaming: false, endedAt: new Date().toISOString() });
     }
   }
 }
 
+/** A later step with the same id updates it; a `delta` grows its output. Same rule as the server's store. */
 function mergeStep(steps: Step[], step: Step): Step[] {
+  const { delta, ...fields } = step;
   const index = steps.findIndex(({ id }) => id === step.id);
-  if (index === -1) return [...steps, step];
-  return steps.map((item, at) => at === index ? { ...item, ...step } : item);
+  const grown = (item?: Step): Step => delta ? { ...fields, output: (item?.output ?? "") + delta } : fields;
+  if (index === -1) return [...steps, grown()];
+  return steps.map((item, at) => at === index ? { ...item, ...grown(item) } : item);
 }

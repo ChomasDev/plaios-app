@@ -4,7 +4,9 @@ import { History, LayoutGrid, Package, Settings, X, type LucideIcon } from "luci
 
 import { componentHealth } from "../shared/health.js";
 import { SNAPPY } from "../shared/motion.js";
-import type { RuntimeComponentDto } from "../shared/types.js";
+import type { ConversationStatus, RuntimeComponentDto } from "../shared/types.js";
+import { StatusPill } from "../features/conversations/status-pill.js";
+import { conversationStatus, type Conversations } from "../features/conversations/use-conversations.js";
 import { StatusDot } from "../shared/ui/status-dot.js";
 import type { Route, View } from "./routes.js";
 import { ThemeToggle } from "./theme-toggle.js";
@@ -16,9 +18,9 @@ const NAV: Array<{ view: View; label: string; icon: LucideIcon; motion: string }
 ];
 
 /** No bar: a few controls float in the chat's corners, under the sheets. */
-export function AppHeader({ route, components, theme }: { route: Route; components?: RuntimeComponentDto[]; theme: { dark: boolean; setDark(dark: boolean): void } }) {
+export function AppHeader({ route, components, theme, conversations }: { route: Route; components?: RuntimeComponentDto[]; theme: { dark: boolean; setDark(dark: boolean): void }; conversations: Conversations }) {
   return <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between p-3 sm:p-4 *:pointer-events-auto">
-    <HistoryButton active={route.view === "history"} />
+    <HistoryButton active={route.view === "history"} status={otherStatus(conversations)} />
     <div className="flex items-center gap-1">
       <RuntimeStatus components={components} />
       <a href="#components" aria-label="Build" className={ICON_BUTTON}><LayoutGrid className="icon-grid size-4" /></a>
@@ -29,13 +31,24 @@ export function AppHeader({ route, components, theme }: { route: Route; componen
 
 const ICON_BUTTON = "group grid size-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current]:bg-muted aria-[current]:text-foreground";
 
-function HistoryButton({ active }: { active: boolean }) {
+/** T3 Code's sidebar priority: what most needs the user, among the conversations not on screen. */
+const PRIORITY: ConversationStatus[] = ["awaiting-input", "working", "failed", "completed"];
+
+function otherStatus({ conversations, currentId }: Conversations): ConversationStatus | undefined {
+  const statuses = conversations.filter(({ id }) => id !== currentId).map(conversationStatus);
+  return PRIORITY.find((status) => statuses.includes(status));
+}
+
+function HistoryButton({ active, status }: { active: boolean; status?: ConversationStatus }) {
   return <a
     href={active ? "#chat" : "#history"}
-    aria-label="Conversations"
+    aria-label={status ? `Conversations, one ${status.replace("-", " ")}` : "Conversations"}
     aria-current={active ? "page" : undefined}
-    className={ICON_BUTTON}
-  ><History className="icon-rewind size-4" /></a>;
+    className={cn(ICON_BUTTON, "relative")}
+  >
+    <History className="icon-rewind size-4" />
+    {status ? <span className="absolute top-1 right-1"><StatusPill status={status} compact /></span> : null}
+  </a>;
 }
 
 /** Tabs at the top of the manage sheet; the active pill slides between them instead of blinking. */

@@ -12,6 +12,9 @@ import type {
 import { ConversationHistory } from "./agent-conversation-history.js";
 import { addDeliveryContext } from "./agent-delivery-context.js";
 import { persistMemoryProposals } from "./agent-memory-proposals.js";
+import { CONVERSATIONS_ID } from "./conversations-capability.js";
+import { PLAN_ID } from "./plan.js";
+import { SUBAGENTS_ID } from "./subagents.js";
 import type { AgentRunDto } from "./types.js";
 
 const INPUT_RESTART_DELAY_MS = 1_000;
@@ -99,7 +102,8 @@ export class AgentRuntime {
     const response = await this.options.agentLoop.run(
       addDeliveryContext(contextualized, output),
       {
-        capabilityIds: decision.capabilityIds,
+        // Any request may grow into long work or refer to another chat, so these host tools are always offered.
+        capabilityIds: decision.bypassModel ? decision.capabilityIds : [PLAN_ID, SUBAGENTS_ID, CONVERSATIONS_ID, ...decision.capabilityIds],
         stream: this.options.stream ?? true,
         bypassModel: decision.bypassModel,
         onEvent: this.options.onEvent,

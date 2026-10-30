@@ -12,7 +12,7 @@ interface AnswerProps { turn: Turn; components: RuntimeComponentDto[]; onAsk(tex
 
 export function AssistantAnswer({ turn, components, onAsk }: AnswerProps) {
   return <div className="space-y-5">
-    {turn.steps?.length ? <WorkLog steps={turn.steps} streaming={turn.streaming === true} /> : null}
+    {turn.steps?.length ? <WorkLog steps={turn.steps} streaming={turn.streaming === true} startedAt={turn.id} endedAt={turn.endedAt} /> : null}
     <div className="text-[15px] leading-7">
       {/* Keyed by phase: the dots vanish and the answer fades in, without a crossfade that shifts layout. */}
       <motion.div key={phaseOf(turn)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>

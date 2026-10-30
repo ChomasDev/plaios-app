@@ -4,15 +4,14 @@ import { useRef } from "react";
 import type { RuntimeComponentDto } from "../shared/types.js";
 import { ChatView } from "../features/chat/chat-view.js";
 import { HistoryView } from "../features/conversations/history-view.js";
-import { useConversations } from "../features/conversations/use-conversations.js";
+import type { Conversations } from "../features/conversations/use-conversations.js";
 import { ManageView } from "./manage-view.js";
 import { navigate, paneOf, type Pane, type Route, type View } from "./routes.js";
 import { Backdrop, Sheet } from "./sheet.js";
 import { usePaneGestures } from "./use-pane-gestures.js";
 
 /** Chat is always underneath; History slides over from the left, everything else from the right. */
-export function Workspace({ route, components }: { route: Route; components: RuntimeComponentDto[] }) {
-  const conversations = useConversations();
+export function Workspace({ route, components, conversations }: { route: Route; components: RuntimeComponentDto[]; conversations: Conversations }) {
   const mainRef = useRef<HTMLElement>(null);
   const lastManage = useRef<View>("components");
   const pane = paneOf(route.view);

@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, type ReactNode } from "react";
 
-import type { RuntimeComponentDto } from "../../shared/types.js";
+import type { ChatAttachmentDto, RuntimeComponentDto } from "../../shared/types.js";
 import type { Conversations, Turn } from "../conversations/use-conversations.js";
+import { AgentsPanel } from "./agents-panel.js";
 import { ChatWelcome } from "./chat-welcome.js";
 import { ComposerDock } from "./composer-dock.js";
 import { EarlierConversation } from "./earlier/earlier-conversation.js";
@@ -19,7 +20,7 @@ export function ChatView({ components, conversations }: { components: RuntimeCom
   const scroll = useStickToBottom(currentId);
   const earlier = useEarlier(conversations, scroll.scrollRef, scroll.release);
   const { stick } = scroll;
-  const ask = useCallback((text: string) => { stick(); void send(text); }, [stick, send]);
+  const ask = useCallback((text: string, attachments?: ChatAttachmentDto[]) => { stick(); void send(text, attachments); }, [stick, send]);
   const renderTurns = (list: Turn[]) => list.map((turn) => <TurnView key={turn.id} turn={turn} components={components} onAsk={ask} />);
 
   return <div className="flex h-full flex-col">
@@ -32,6 +33,7 @@ export function ChatView({ components, conversations }: { components: RuntimeCom
         <TurnList key={currentId}>{renderTurns(turns)}</TurnList>
       </div>
     </div>
+    <AgentsPanel turns={turns} />
     <ComposerDock busy={busy} onSend={ask} />
   </div>;
 }

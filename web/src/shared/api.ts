@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { HostSettingsDto, RuntimeSnapshot, StorePackageDetailDto, TelemetryDto } from "./types.js";
+import type { ChatAttachmentDto, HostSettingsDto, RuntimeSnapshot, StorePackageDetailDto, TelemetryDto } from "./types.js";
 
 export async function requestJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -45,6 +45,19 @@ export function useRuntimeMutation<TVariables = void>(mutationFn: (variables: TV
 export async function reloadWhenBack(): Promise<void> {
   await waitForControlPlane();
   location.reload();
+}
+
+/** Sends one file to the host; the chat then refers to it by id. */
+export function uploadFile(file: File): Promise<ChatAttachmentDto> {
+  return requestJson<ChatAttachmentDto>("/api/uploads", {
+    method: "POST",
+    headers: { "content-type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name) },
+    body: file,
+  });
+}
+
+export function uploadUrl(id: string): string {
+  return `/api/uploads/file?id=${encodeURIComponent(id)}`;
 }
 
 export async function waitForControlPlane(): Promise<void> {

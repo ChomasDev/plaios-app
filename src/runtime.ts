@@ -3,6 +3,9 @@ import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
   AgentLoop,
+  CapabilityDiscovery,
+  Database,
+  DatabaseProvider,
   InputInterface,
   Memory,
   Orchestrator,
@@ -11,6 +14,9 @@ import type {
 
 import { AgentRuntime } from "./agent-runtime.js";
 import { CapabilityDocsCapability, type CapabilityDocsEntry } from "./capability-docs.js";
+import { ConversationsCapability } from "./conversations-capability.js";
+import { PlanCapability } from "./plan.js";
+import { SubagentsCapability } from "./subagents.js";
 import { Telemetry } from "./telemetry.js";
 import { WebChat } from "./web-chat.js";
 import { writeDynamicAppConfig } from "./config.js";
@@ -68,6 +74,7 @@ export class DynamicRuntime {
   private readonly actions = new Map<string, Map<string, RegisteredAction>>();
   private agentRuntime?: AgentRuntime;
   private webChat?: WebChat;
+  private readonly hostDatabases = new Map<string, { provider: unknown; view: Database }>();
   readonly telemetry = new Telemetry();
 
   constructor(
@@ -326,6 +333,17 @@ export class DynamicRuntime {
     return this.snapshot();
   }
 
+  /** A database view for the host's own tables, such as chat history; the same view until the database component changes. */
+  hostDatabase(namespace: string): Database | undefined {
+    const provider = this.components.find(({ descriptor, instance }) => descriptor.kind === "database" && instance)?.instance as Partial<DatabaseProvider> & Partial<Database> | undefined;
+    if (!provider) return undefined;
+    const cached = this.hostDatabases.get(namespace);
+    if (cached?.provider === provider) return cached.view;
+    const view = typeof provider.scope === "function" ? provider.scope(namespace) : provider as Database;
+    this.hostDatabases.set(namespace, { provider, view });
+    return view;
+  }
+
   async reload(): Promise<RuntimeSnapshot> {
     await this.close();
     this.actions.clear();
@@ -518,6 +536,14 @@ export class DynamicRuntime {
     const discovery = this.components.find(({ descriptor, instance }) => descriptor.kind === "discovery" && isCapabilityDiscovery(instance))?.instance as { register(capability: unknown): Promise<void> } | undefined;
     if (!discovery) return;
     await discovery.register(new CapabilityDocsCapability(() => this.capabilityDocsEntries()));
+    await discovery.register(new PlanCapability((step) => this.webChat?.step(step)));
+    await discovery.register(new ConversationsCapability(() => this.components.find(({ descriptor, instance }) => descriptor.kind === "memory" && isMemory(instance))?.instance as Memory | undefined));
+    await discovery.register(new SubagentsCapability({
+      agentLoop: () => this.components.find(({ descriptor, instance }) => descriptor.kind === "agent" && isAgentLoop(instance))?.instance as AgentLoop | undefined,
+      discovery: () => discovery as unknown as CapabilityDiscovery,
+      step: (step) => this.webChat?.step(step),
+      event: (event, parentId) => this.webChat?.onEvent(event, parentId),
+    }));
     for (const { descriptor, instance } of this.components) {
       // A package may expose a capability from another live interface. Cronjob,
       // for example, must use the same object for its input listener and its
@@ -527,10 +553,10 @@ export class DynamicRuntime {
   }
 
   /** Runs one chat turn and names the components whose capabilities the agent used, so the UI can show them. */
-  async chat(text: string, sessionId: string, onDelta?: (delta: string) => void, onStep?: (step: ChatStep) => void): Promise<{ text: string; components: string[] }> {
+  async chat(text: string, sessionId: string, onDelta?: (delta: string) => void, onStep?: (step: ChatStep) => void, input?: Parameters<WebChat["ask"]>[4]): Promise<{ text: string; components: string[] }> {
     if (!this.webChat) throw new Error("Message runtime is not running: it needs memory, orchestrator and agent components");
     this.webChat.setComponents(await this.openUIComponents());
-    const { text: reply, capabilityIds } = await this.webChat.ask(text, sessionId, onDelta, onStep);
+    const { text: reply, capabilityIds } = await this.webChat.ask(text, sessionId, onDelta, onStep, input);
     const components = this.components
       .filter(({ descriptor, instance }) => descriptor.web && isCapability(instance) && capabilityIds.includes((instance as { manifest: { id: string } }).manifest.id))
       .map(({ descriptor }) => descriptor.instanceId);

@@ -8,13 +8,15 @@ import react from "@vitejs/plugin-react";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
 
 import { ChatTurns, type ChatEvent } from "./chat-turns.js";
+import { CHAT_NAMESPACE, ConversationStore, applyChatEvent } from "./conversation-store.js";
 import { loadOrCreateConfig, resolveConfigPath } from "./config.js";
 import { HostLogs } from "./host-logs.js";
+import { IMAGE_TYPES, UploadStore, agentInputFor } from "./uploads.js";
 import { scheduleHostRestart, updateHostPackage } from "./host-settings.js";
 import { installConfiguredPackages } from "./installer.js";
 import { DynamicRuntime } from "./runtime.js";
 import { getStorePackage, listStorePackages } from "./store-catalog.js";
-import type { InterfaceKind, ModelKind } from "./types.js";
+import type { ChatTurnDto, ConversationDto, InterfaceKind, ModelKind } from "./types.js";
 import { INTERFACE_KINDS, MODEL_KINDS, isRecord } from "./types.js";
 
 export interface StartDynamicAppOptions {
@@ -49,6 +51,8 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
     await installConfiguredPackages(runtimeRoot, config.registry, config.components);
   }
   const runtime = new DynamicRuntime(projectRoot, runtimeRoot, configPath, config);
+  const conversations = new ConversationStore(() => runtime.hostDatabase(CHAT_NAMESPACE));
+  const uploads = new UploadStore(join(dirname(configPath), ".agent-os", "uploads"));
   await runtime.load();
 
   const packageRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -56,7 +60,7 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
   const vite = await createServer({
     root: webRoot,
     appType: "spa",
-    plugins: [react(), tailwindcss(), runtimeApi(runtime, logs)],
+    plugins: [react(), tailwindcss(), runtimeApi(runtime, logs, conversations, uploads)],
     resolve: { dedupe: ["react", "react-dom", "@plaios/microfrontend"] },
     optimizeDeps: { include: ["react", "react-dom", "react/jsx-runtime", "@plaios/microfrontend"] },
     server: {
@@ -87,7 +91,7 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
   return handle;
 }
 
-function runtimeApi(runtime: DynamicRuntime, logs: HostLogs): Plugin {
+function runtimeApi(runtime: DynamicRuntime, logs: HostLogs, conversations: ConversationStore, uploads: UploadStore): Plugin {
   const chatTurns = new ChatTurns();
   return {
     name: "agent-os-dynamic-runtime-api",
@@ -151,18 +155,61 @@ function runtimeApi(runtime: DynamicRuntime, logs: HostLogs): Plugin {
             scheduleHostRestart();
             return json(response, 200, { ...snapshot, restarting: true });
           }
+          if (request.method === "POST" && url.pathname === "/api/uploads") {
+            const name = decodeURIComponent(String(request.headers["x-file-name"] ?? "file"));
+            return json(response, 200, await uploads.save(request, name, String(request.headers["content-type"] ?? "")));
+          }
+          if (request.method === "GET" && url.pathname === "/api/uploads/file") {
+            const upload = await uploads.get(url.searchParams.get("id") ?? "");
+            if (!upload) return json(response, 404, { error: "Unknown file" });
+            // Only images render inline; anything else downloads, so an uploaded page can never run in this origin.
+            const inline = IMAGE_TYPES.has(upload.attachment.mediaType);
+            response.statusCode = 200;
+            response.setHeader("content-type", inline ? upload.attachment.mediaType : "application/octet-stream");
+            response.setHeader("content-disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(upload.attachment.name)}`);
+            response.setHeader("x-content-type-options", "nosniff");
+            response.setHeader("cache-control", "private, max-age=31536000, immutable");
+            uploads.open(upload).pipe(response);
+            return;
+          }
           if (request.method === "POST" && url.pathname === "/api/chat") {
-            const body = await bodyJson(request) as { text?: unknown; sessionId?: unknown; turnId?: unknown };
-            if (typeof body.text !== "string" || !body.text.trim() || typeof body.sessionId !== "string") throw new Error("Invalid chat request");
+            const body = await bodyJson(request) as { text?: unknown; sessionId?: unknown; turnId?: unknown; attachments?: unknown };
+            const files = (await Promise.all((Array.isArray(body.attachments) ? body.attachments : []).map((id) => uploads.get(String(id))))).filter((upload) => upload !== undefined);
+            if (typeof body.text !== "string" || (!body.text.trim() && files.length === 0) || typeof body.sessionId !== "string" || !/^[\w-]{1,100}$/.test(body.sessionId)) throw new Error("Invalid chat request");
             const text = body.text.trim();
             const sessionId = body.sessionId;
             const turnId = typeof body.turnId === "string" && body.turnId ? body.turnId : randomUUID();
+            const { images, note } = await agentInputFor(files);
+            const attachments = files.map(({ attachment }) => attachment);
             // The turn keeps running if the page goes away; GET /api/chat/turn follows it again.
             chatTurns.start(turnId, async (emit) => {
-              const result = await runtime.chat(text, sessionId, (delta) => emit({ delta }), (step) => emit({ step }));
+              const result = await runtime.chat(`${text || "See the attached files."}${note}`, sessionId, (delta) => emit({ delta }), (step) => emit({ step }), {
+                attachments: images,
+                // History and routing keep the words, not the inlined file contents.
+                ...(note ? { originalText: `${text}${text ? " " : ""}[attached: ${attachments.map(({ name }) => name).join(", ")}]` } : {}),
+              });
               emit({ done: true, components: result.components });
             });
+            recordTurn(chatTurns, conversations, sessionId, { id: Number(turnId) || Date.now(), question: text, ...(attachments.length ? { attachments } : {}), components: [], streaming: true }, turnId);
             return followTurn(chatTurns, turnId, response);
+          }
+          if (request.method === "GET" && url.pathname === "/api/conversations") {
+            return json(response, 200, await conversations.list());
+          }
+          if (request.method === "GET" && url.pathname === "/api/conversations/item") {
+            const conversation = await conversations.get(url.searchParams.get("id") ?? "");
+            return conversation ? json(response, 200, conversation) : json(response, 404, { error: "Unknown conversation" });
+          }
+          if (request.method === "POST" && url.pathname === "/api/conversations/visit") {
+            const body = await bodyJson(request) as { id?: unknown };
+            if (typeof body.id !== "string") throw new Error("Invalid visit request");
+            await conversations.visit(body.id);
+            return json(response, 200, { ok: true });
+          }
+          if (request.method === "POST" && url.pathname === "/api/conversations/import") {
+            const body = await bodyJson(request) as { conversations?: unknown };
+            if (!Array.isArray(body.conversations)) throw new Error("Invalid import request");
+            return json(response, 200, { imported: await conversations.import(body.conversations as ConversationDto[]) });
           }
           if (request.method === "GET" && url.pathname === "/api/chat/turn") {
             const turnId = url.searchParams.get("id") ?? "";
@@ -238,6 +285,18 @@ function runtimeApi(runtime: DynamicRuntime, logs: HostLogs): Plugin {
       });
     },
   };
+}
+
+/** Saves the turn as it starts, whenever a step settles, and when it ends, so every browser sees it and a crash loses little. */
+function recordTurn(chatTurns: ChatTurns, conversations: ConversationStore, conversationId: string, initial: ChatTurnDto, turnId: string): void {
+  let turn = initial;
+  const save = () => void conversations.saveTurn(conversationId, turn).catch((error: unknown) => console.warn("[dynamic] Could not save conversation:", error instanceof Error ? error.message : error));
+  save();
+  chatTurns.follow(turnId, (event) => {
+    turn = applyChatEvent(turn, event);
+    const step = event.step as { status?: string } | undefined;
+    if (event.done || event.error || (step && step.status !== "running")) save();
+  });
 }
 
 /** Newline-delimited JSON: {step} and {delta} while the agent works, then {done, components} or {error}. */

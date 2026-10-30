@@ -4,10 +4,12 @@ import type { Conversation, Conversations } from "../../conversations/use-conver
 import { usePullToReveal } from "./use-pull-to-reveal.js";
 
 /** Conversations above the current one, revealed one at a time by pulling past the top (or the button on touch screens). */
-export function useEarlier({ conversations, currentId }: Conversations, scrollRef: RefObject<HTMLElement | null>, release: () => void) {
+export function useEarlier({ conversations, currentId, load }: Conversations, scrollRef: RefObject<HTMLElement | null>, release: () => void) {
   const [count, setCount] = useState(0);
   const older = olderThan(conversations, currentId);
   const next = older[count];
+  // The peek shows the next one's last turns, so fetch them before the pull starts.
+  useEffect(() => { if (next && !next.loaded) load(next.id); }, [next, load]);
   const reveal = useCallback(() => { release(); setCount((value) => value + 1); }, [release]);
   const pull = usePullToReveal(scrollRef, Boolean(next), { onPull: release, onSnap: reveal });
   const { reset } = pull;

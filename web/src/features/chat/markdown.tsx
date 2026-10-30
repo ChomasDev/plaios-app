@@ -1,5 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 
+import { CodeBlock } from "./code-block.js";
+
 const LIST_ITEM = /^\s*([-*]|\d+\.)\s+/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 const HEADING_CLASS = ["mt-8 mb-3 text-2xl font-semibold tracking-tight first:mt-0", "mt-8 mb-3 border-b pb-2 text-lg font-semibold", "mt-6 mb-2 font-semibold"];
@@ -15,8 +17,9 @@ export function Markdown({ text, document }: { text: string; document?: boolean 
     const line = lines[index]!;
     if (line.startsWith("```")) {
       const code: string[] = [];
+      const language = line.slice(3).trim();
       while (++index < lines.length && !lines[index]!.startsWith("```")) code.push(lines[index]!);
-      blocks.push(<pre key={index} className="my-3 overflow-x-auto rounded-xl bg-muted px-4 py-3 font-mono text-[13px] leading-6">{code.join("\n")}</pre>);
+      blocks.push(<CodeBlock key={index} code={code.join("\n")} language={language} />);
       continue;
     }
     if (LIST_ITEM.test(line)) {

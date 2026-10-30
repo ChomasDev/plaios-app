@@ -11,7 +11,7 @@ import type { Conversations } from "./use-conversations.js";
 export function HistoryView({ conversations }: { conversations: Conversations }) {
   const pick = (id: string) => { conversations.select(id); navigate("chat"); };
   const startNew = () => { conversations.startNew(); navigate("chat"); };
-  return <Page title="Conversations" intro="Everything you asked from this browser." aside={<PillButton onClick={startNew}><span className="group flex items-center gap-1.5"><Plus className="icon-turn size-3.5" />New</span></PillButton>}>
+  return <Page title="Conversations" intro="Everything you asked, from any browser." aside={<PillButton onClick={startNew}><span className="group flex items-center gap-1.5"><Plus className="icon-turn size-3.5" />New</span></PillButton>}>
     <ConversationList conversations={conversations} onPick={pick} />
   </Page>;
 }
