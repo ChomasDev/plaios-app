@@ -1,6 +1,7 @@
 import type {
   AIProcessResult,
   AgentLoop,
+  AgentLoopEventHandler,
   InputInterface,
   InputMessage,
   Memory,
@@ -23,6 +24,7 @@ export interface AgentRuntimeOptions {
   agentLoop: AgentLoop;
   stream?: boolean;
   onRun?: (run: AgentRunDto) => void;
+  onEvent?: AgentLoopEventHandler;
 }
 
 export class AgentRuntime {
@@ -100,6 +102,7 @@ export class AgentRuntime {
         capabilityIds: decision.capabilityIds,
         stream: this.options.stream ?? true,
         bypassModel: decision.bypassModel,
+        onEvent: this.options.onEvent,
       },
     );
     const additional = (decision.additionalOutputs ?? []).map((route) => {

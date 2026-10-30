@@ -100,3 +100,15 @@ test("falls back to agent-os.yaml only when plaios.yaml is missing", async () =>
   assert.equal(resolveConfigPath(directory), join(directory, "plaios.yaml"));
   assert.equal(resolveConfigPath(directory, "custom.yaml"), join(directory, "custom.yaml"));
 });
+
+test("parses and keeps the active model per kind", () => {
+  const config = parseDynamicAppConfig(`
+schemaVersion: 1
+registry: http://localhost:4873
+active: { system2: system2:claude-code }
+components: []
+`);
+  assert.deepEqual(config.active, { system2: "system2:claude-code" });
+  assert.match(serializeDynamicAppConfig(config), /active:\n {2}system2: system2:claude-code/);
+  assert.equal(parseDynamicAppConfig("schemaVersion: 1\nregistry: http://localhost:4873\ncomponents: []\n").active, undefined);
+});

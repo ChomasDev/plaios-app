@@ -1,4 +1,5 @@
-import type { IncomingMessage } from "node:http";
+import { randomUUID } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,13 +7,15 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
 
+import { ChatTurns, type ChatEvent } from "./chat-turns.js";
 import { loadOrCreateConfig, resolveConfigPath } from "./config.js";
+import { HostLogs } from "./host-logs.js";
 import { scheduleHostRestart, updateHostPackage } from "./host-settings.js";
 import { installConfiguredPackages } from "./installer.js";
 import { DynamicRuntime } from "./runtime.js";
 import { getStorePackage, listStorePackages } from "./store-catalog.js";
-import type { InterfaceKind } from "./types.js";
-import { INTERFACE_KINDS, isRecord } from "./types.js";
+import type { InterfaceKind, ModelKind } from "./types.js";
+import { INTERFACE_KINDS, MODEL_KINDS, isRecord } from "./types.js";
 
 export interface StartDynamicAppOptions {
   currentDirectory?: string;
@@ -30,6 +33,8 @@ export interface DynamicAppHandle {
 }
 
 export async function startDynamicApp(options: StartDynamicAppOptions = {}): Promise<DynamicAppHandle> {
+  const logs = new HostLogs();
+  logs.capture();
   const projectRoot = resolve(options.currentDirectory ?? process.cwd());
   const configPath = resolveConfigPath(projectRoot, options.configPath);
   const loaded = await loadOrCreateConfig(configPath);
@@ -51,7 +56,7 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
   const vite = await createServer({
     root: webRoot,
     appType: "spa",
-    plugins: [react(), tailwindcss(), runtimeApi(runtime)],
+    plugins: [react(), tailwindcss(), runtimeApi(runtime, logs)],
     resolve: { dedupe: ["react", "react-dom", "@plaios/microfrontend"] },
     optimizeDeps: { include: ["react", "react-dom", "react/jsx-runtime", "@plaios/microfrontend"] },
     server: {
@@ -82,7 +87,8 @@ export async function startDynamicApp(options: StartDynamicAppOptions = {}): Pro
   return handle;
 }
 
-function runtimeApi(runtime: DynamicRuntime): Plugin {
+function runtimeApi(runtime: DynamicRuntime, logs: HostLogs): Plugin {
+  const chatTurns = new ChatTurns();
   return {
     name: "agent-os-dynamic-runtime-api",
     configureServer(server) {
@@ -98,6 +104,20 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
           }
           if (request.method === "GET" && url.pathname === "/api/telemetry") {
             return json(response, 200, runtime.telemetry.snapshot());
+          }
+          if (request.method === "GET" && url.pathname === "/api/logs") {
+            return json(response, 200, logs.list());
+          }
+          if (request.method === "POST" && url.pathname === "/api/settings/restart") {
+            scheduleHostRestart();
+            return json(response, 200, { restarting: true });
+          }
+          if (request.method === "POST" && url.pathname === "/api/components/restart") {
+            const body = await bodyJson(request) as { instanceIds?: unknown };
+            if (!Array.isArray(body.instanceIds) || !body.instanceIds.length || !body.instanceIds.every((id) => typeof id === "string")) {
+              throw new Error("Invalid restart request");
+            }
+            return json(response, 200, await runtime.restartComponents(body.instanceIds as string[]));
           }
           if (request.method === "POST" && url.pathname === "/api/runtime/reload") {
             return json(response, 200, await runtime.reload());
@@ -132,20 +152,22 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
             return json(response, 200, { ...snapshot, restarting: true });
           }
           if (request.method === "POST" && url.pathname === "/api/chat") {
-            const body = await bodyJson(request) as { text?: unknown; sessionId?: unknown };
+            const body = await bodyJson(request) as { text?: unknown; sessionId?: unknown; turnId?: unknown };
             if (typeof body.text !== "string" || !body.text.trim() || typeof body.sessionId !== "string") throw new Error("Invalid chat request");
-            // Newline-delimited JSON: {delta} while the model streams, then {done, components} or {error}.
-            response.statusCode = 200;
-            response.setHeader("content-type", "application/x-ndjson; charset=utf-8");
-            response.setHeader("cache-control", "no-store");
-            const send = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
-            try {
-              const result = await runtime.chat(body.text.trim(), body.sessionId, (delta) => send({ delta }));
-              send({ done: true, components: result.components });
-            } catch (error) {
-              send({ error: error instanceof Error ? error.message : String(error) });
-            }
-            return response.end();
+            const text = body.text.trim();
+            const sessionId = body.sessionId;
+            const turnId = typeof body.turnId === "string" && body.turnId ? body.turnId : randomUUID();
+            // The turn keeps running if the page goes away; GET /api/chat/turn follows it again.
+            chatTurns.start(turnId, async (emit) => {
+              const result = await runtime.chat(text, sessionId, (delta) => emit({ delta }), (step) => emit({ step }));
+              emit({ done: true, components: result.components });
+            });
+            return followTurn(chatTurns, turnId, response);
+          }
+          if (request.method === "GET" && url.pathname === "/api/chat/turn") {
+            const turnId = url.searchParams.get("id") ?? "";
+            if (!followTurn(chatTurns, turnId, response)) return json(response, 404, { error: "Unknown chat turn" });
+            return;
           }
           const dataMatch = /^\/api\/components\/([^/]+)\/data$/.exec(url.pathname);
           if (request.method === "GET" && dataMatch) {
@@ -192,6 +214,11 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
             const snapshot = await runtime.swapKind(body.kind as InterfaceKind, body.packageName, body.version);
             return json(response, 200, { ...snapshot, kind: body.kind, packageName: body.packageName, version: body.version ?? "latest" });
           }
+          if (request.method === "POST" && url.pathname === "/api/settings/active") {
+            const body = await bodyJson(request) as { kind?: unknown; instanceId?: unknown };
+            if (!MODEL_KINDS.includes(body.kind as ModelKind) || typeof body.instanceId !== "string") throw new Error("Invalid active model request");
+            return json(response, 200, await runtime.setActiveModel(body.kind as ModelKind, body.instanceId));
+          }
           if (request.method === "POST" && url.pathname === "/api/settings/component") {
             const body = await bodyJson(request) as { instanceId?: unknown; enabled?: unknown };
             if (typeof body.instanceId !== "string" || typeof body.enabled !== "boolean") {
@@ -211,6 +238,25 @@ function runtimeApi(runtime: DynamicRuntime): Plugin {
       });
     },
   };
+}
+
+/** Newline-delimited JSON: {step} and {delta} while the agent works, then {done, components} or {error}. */
+function followTurn(chatTurns: ChatTurns, turnId: string, response: ServerResponse): boolean {
+  let unsubscribe: (() => void) | undefined;
+  const send = (event: ChatEvent) => {
+    if (!response.headersSent) {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/x-ndjson; charset=utf-8");
+      response.setHeader("cache-control", "no-store");
+    }
+    response.write(`${JSON.stringify(event)}\n`);
+    if (event.done || event.error) { unsubscribe?.(); response.end(); }
+  };
+  unsubscribe = chatTurns.follow(turnId, send);
+  if (!unsubscribe) return false;
+  if (response.writableEnded) unsubscribe();
+  else response.on("close", unsubscribe);
+  return true;
 }
 
 function bodyJson(request: IncomingMessage): Promise<unknown> {

@@ -20,8 +20,8 @@
     "src/**/*.ts",
     "web/**/*.ts",
     "web/**/*.tsx",
-    "test/**/*.ts",
-    "landing/**/*.ts",
-    "landing/**/*.tsx"
-  ]
+    "test/**/*.ts"
+  ],
+  // The landing is built by Vite and imports ../developer-guide, which tsc cannot place under rootDir.
+  "exclude": ["landing"]
 }

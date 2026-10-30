@@ -44,4 +44,9 @@ test("plugins receive System 1 and System 2 they declare, picked by instanceId",
   const picked = internals.componentOptions(plugin, { config: { system2Instance: "ai:openrouter" } });
   assert.equal(picked.system2, openrouter);
   assert.equal(internals.componentOptions(plain, {}).system2, undefined);
+
+  // The host's active model wins over config order, but not over a component's own pick.
+  (runtime as unknown as { config: { active: Record<string, string> } }).config.active = { system2: "ai:openrouter" };
+  assert.equal(internals.componentOptions(plugin, {}).system2, openrouter);
+  assert.equal(internals.componentOptions(plugin, { config: { system2Instance: "ai:codex" } }).system2, codex);
 });

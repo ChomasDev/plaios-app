@@ -6,6 +6,8 @@ const HIDDEN_STORE_PACKAGES = new Set([
   "@plaios/app-dynamic",
   "@plaios/package-manager",
   "@plaios/microfrontend",
+  // Library shared by the model packages, not a plugin.
+  "@plaios/systems",
   // Renamed to @plaios/jev-orchestrator.
   "@plaios/jev-orhcestator",
   "@plaios/core",

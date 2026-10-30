@@ -59,7 +59,12 @@ export interface DynamicAppConfig {
     port: number;
   };
   components: DynamicComponentConfig[];
+  /** Model instance used wherever a component does not name its own `system1Instance`/`system2Instance`. */
+  active?: Partial<Record<ModelKind, string>>;
 }
+
+export type ModelKind = "system1" | "system2";
+export const MODEL_KINDS: readonly ModelKind[] = ["system1", "system2"];
 
 export interface ManifestWebSurface {
   entry: string;
@@ -143,6 +148,8 @@ export interface RuntimeSlotDto {
     enabled: boolean;
   }>;
   options: RuntimeSlotOptionDto[];
+  /** The instance the runtime actually uses when several fill the slot. */
+  active?: string;
 }
 
 export interface HostSettingsDto {
@@ -159,6 +166,11 @@ export interface HostSettingsDto {
   slots: RuntimeSlotDto[];
   registryReachable: boolean;
 }
+
+/** One line of the chat's work log; a later step with the same id updates it. */
+export interface ChatStep { id: string; label: string; status: "running" | "done" | "failed"; detail?: string }
+
+export interface HostLogEntry { seq: number; at: string; level: "debug" | "info" | "warn" | "error"; text: string }
 
 export interface AgentRunDto {
   at: string;

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { HostSettingsDto, RuntimeSnapshot, TelemetryDto } from "./types.js";
+import type { HostSettingsDto, RuntimeSnapshot, StorePackageDetailDto, TelemetryDto } from "./types.js";
 
 export async function requestJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -25,10 +25,26 @@ export function useTelemetry() {
   return useQuery({ queryKey: ["telemetry"], queryFn: () => requestJson<TelemetryDto>("/api/telemetry"), refetchInterval: 10_000 });
 }
 
+/** Registry metadata of one package: versions with dates, license, links, README. */
+export function usePackageDetail(name: string, enabled = true) {
+  return useQuery({
+    queryKey: ["store", "package", name],
+    queryFn: () => requestJson<StorePackageDetailDto>(`/api/store/package?name=${encodeURIComponent(name)}`),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
 /** Any runtime change can touch every view, so success refetches everything. */
 export function useRuntimeMutation<TVariables = void>(mutationFn: (variables: TVariables) => Promise<unknown>) {
   const queryClient = useQueryClient();
   return useMutation({ mutationFn, onSuccess: () => queryClient.invalidateQueries() });
+}
+
+/** After a host restart: wait for the new process, then load its UI. */
+export async function reloadWhenBack(): Promise<void> {
+  await waitForControlPlane();
+  location.reload();
 }
 
 export async function waitForControlPlane(): Promise<void> {

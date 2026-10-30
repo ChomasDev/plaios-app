@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
-export interface Turn { id: number; question: string; answer?: string; components: string[]; error?: string; streaming?: boolean }
+import type { ChatStep as Step } from "../../shared/types.js";
+
+export type { Step };
+export interface Turn { id: number; question: string; answer?: string; steps?: Step[]; components: string[]; error?: string; streaming?: boolean }
 export interface Conversation { id: string; startedAt: string; turns: Turn[] }
 
 const KEY = "agent-os-conversations";
@@ -16,17 +19,16 @@ function uid(): string {
 function load(): Conversation[] {
   try {
     const stored = JSON.parse(localStorage.getItem(KEY) ?? "[]") as Conversation[];
-    return stored.map((conversation) => ({ ...conversation, turns: conversation.turns.map(settle) }));
+    return stored;
   } catch {
     return [];
   }
 }
 
-/** A turn still streaming in storage was cut off by a reload; show it as finished. */
-function settle(turn: Turn): Turn {
-  if (!turn.streaming) return turn;
-  if (turn.answer) return { ...turn, streaming: false };
-  return { ...turn, streaming: false, error: "Interrupted before an answer arrived." };
+/** A turn the server no longer knows (it restarted, or the turn expired) can only be shown as finished. */
+export function settled(turn: Turn): Partial<Turn> {
+  if (turn.answer) return { streaming: false };
+  return { streaming: false, error: "Interrupted before an answer arrived." };
 }
 
 function save(conversations: Conversation[]): void {

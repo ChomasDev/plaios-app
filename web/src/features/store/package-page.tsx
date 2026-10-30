@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ExternalLink } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { requestJson } from "../../shared/api.js";
+import { usePackageDetail } from "../../shared/api.js";
 import { rise } from "../../shared/motion.js";
 import type { StorePackageDetailDto } from "../../shared/types.js";
 import { BackLink } from "../../shared/ui/back-link.js";
@@ -19,14 +18,14 @@ import { PackageIcon } from "./package-icon.js";
 const VISIBLE_VERSIONS = 8;
 
 export function PackagePage({ name }: { name: string }) {
-  const detail = useQuery({ queryKey: ["store", "package", name], queryFn: () => requestJson<StorePackageDetailDto>(`/api/store/package?name=${encodeURIComponent(name)}`) });
+  const detail = usePackageDetail(name);
   return <div className="mx-auto w-full max-w-6xl px-6 py-8">
     <div className="mb-8"><BackLink href="#store" label="Back to Store" /></div>
     <PackageBody detail={detail} />
   </div>;
 }
 
-function PackageBody({ detail }: { detail: ReturnType<typeof useQuery<StorePackageDetailDto>> }) {
+function PackageBody({ detail }: { detail: ReturnType<typeof usePackageDetail> }) {
   if (detail.isError) return <EmptyState art={<UnpluggedScene />} title="This package could not be read" hint={detail.error.message} />;
   if (!detail.data) return <Hint>Reading package…</Hint>;
   const item = detail.data;

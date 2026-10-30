@@ -3,7 +3,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import { isRecord, type DynamicAppConfig, type DynamicComponentConfig } from "./types.js";
+import { MODEL_KINDS, isRecord, type DynamicAppConfig, type DynamicComponentConfig } from "./types.js";
 
 export const DEFAULT_CONFIG_FILE = "plaios.yaml";
 export const DEFAULT_REGISTRY = "https://registry.npmjs.org";
@@ -28,7 +28,13 @@ export function parseDynamicAppConfig(source: string): DynamicAppConfig {
     if (instanceIds.has(instanceId)) throw new Error(`Duplicate component instanceId: ${instanceId}`);
     instanceIds.add(instanceId);
   }
-  return { schemaVersion: 1, registry, server: { host, port }, components };
+  const activeValue = value.active ?? {};
+  if (!isRecord(activeValue)) throw new Error('Agent OS config "active" must be an object');
+  const active = Object.fromEntries(MODEL_KINDS.flatMap((kind) => {
+    const instanceId = optionalText(activeValue[kind], `active.${kind}`);
+    return instanceId ? [[kind, instanceId]] : [];
+  }));
+  return { schemaVersion: 1, registry, server: { host, port }, components, ...(Object.keys(active).length ? { active } : {}) };
 }
 
 export function serializeDynamicAppConfig(config: DynamicAppConfig): string {

@@ -71,6 +71,8 @@ test("builds slots from mounted components and registry keywords", () => {
       { name: "@plaios/orchestrator-default", version: "0.1.2", keywords: ["orchestrator"] },
       { name: "@plaios/jev-orchestrator", version: "0.1.2", description: "Jev router", keywords: ["orchestrator"] },
       { name: "@plaios/codex", version: "0.1.2", keywords: ["ai"] },
+      { name: "@anthropic-ai/claude-agent-sdk", version: "0.3.0", keywords: ["ai", "agent"] },
+      { name: "@plaios/systems", version: "0.1.0", keywords: ["system2"] },
     ],
   );
   const orchestrator = slots.find((slot) => slot.kind === "orchestrator");
@@ -82,5 +84,6 @@ test("builds slots from mounted components and registry keywords", () => {
     "@plaios/orchestrator-default",
   ]);
   assert.equal(ai?.current.length, 0);
-  assert.equal(ai?.options[0]?.packageName, "@plaios/codex");
+  assert.deepEqual(ai?.options.map((item) => item.packageName), ["@plaios/codex"]);
+  assert.equal(slots.some((slot) => slot.kind === "agent"), false);
 });

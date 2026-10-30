@@ -26,6 +26,7 @@ import { buildRuntimeSlots, manifestDefaults, planKindReplacement, replaceKindCo
 import { searchRegistry } from "./store-catalog.js";
 import type {
   BridgeActionMarker,
+  ChatStep,
   DynamicAppConfig,
   DynamicComponentConfig,
   DynamicManifestInterface,
@@ -38,7 +39,10 @@ import type {
   RuntimeWebSurface,
   OpenUIComponentSpec,
 } from "./types.js";
-import { INTERFACE_KINDS, TOGGLE_KINDS } from "./types.js";
+import { INTERFACE_KINDS, MODEL_KINDS, TOGGLE_KINDS, type ModelKind } from "./types.js";
+
+/** The message runtime uses one of each; extra ones are ignored. */
+const SINGLETON_KINDS: readonly InterfaceKind[] = ["memory", "orchestrator", "agent"];
 
 type RuntimeModule = Record<string, unknown>;
 type Constructor = new (options?: Record<string, unknown>) => unknown;
@@ -182,7 +186,7 @@ export class DynamicRuntime {
           enabled: definition.enabled !== false,
         })),
         catalog,
-      ),
+      ).map((slot) => ({ ...slot, active: this.activeInstanceId(slot.kind) })),
     };
   }
 
@@ -296,6 +300,30 @@ export class DynamicRuntime {
     this.agentRuntime = undefined;
     this.webChat = undefined;
     await Promise.allSettled([...new Set(this.components.map(({ instance }) => instance).filter(Boolean))].map(closeInstance));
+  }
+
+  /**
+   * Re-creates the given inputs, outputs and actions and leaves the other parts running.
+   * Core parts are handed to other components when those are built, so restarting one reloads everything.
+   */
+  async restartComponents(instanceIds: readonly string[]): Promise<RuntimeSnapshot> {
+    const targets = instanceIds.map((instanceId) => this.get(instanceId));
+    if (targets.some(({ descriptor }) => !TOGGLE_KINDS.includes(descriptor.kind))) return this.reload();
+    // Interfaces of one package can share an object (cronjob's input is also its tool): they restart together.
+    const group = this.components.filter((item) => targets.some((target) => item === target || (target.instance && item.instance === target.instance)));
+    await this.agentRuntime?.stop().catch((error: unknown) => console.warn("[dynamic] Could not stop message runtime:", error));
+    this.agentRuntime = undefined;
+    this.webChat = undefined;
+    await Promise.allSettled([...new Set(group.map(({ instance }) => instance).filter(Boolean))].map(closeInstance));
+    for (const item of group) {
+      item.instance = undefined;
+      this.actions.delete(item.descriptor.instanceId);
+    }
+    for (const item of group) this.components[this.components.indexOf(item)] = await this.loadComponent(item.definition);
+    await this.registerActionCapabilities();
+    this.startAgentRuntime();
+    console.log(`[dynamic] restarted ${group.map(({ descriptor }) => descriptor.instanceId).join(", ")}`);
+    return this.snapshot();
   }
 
   async reload(): Promise<RuntimeSnapshot> {
@@ -458,11 +486,32 @@ export class DynamicRuntime {
     return (environments.find(({ manifestInterface }) => manifestInterface.className === "CompositeEnvironment") ?? environments[0])?.instance as { get(key: string): string | undefined } | undefined;
   }
 
-  private system(kind: "system1" | "system2", instanceId?: unknown): unknown {
+  private system(kind: ModelKind, instanceId?: unknown): unknown {
+    return this.systemComponent(kind, instanceId)?.instance;
+  }
+
+  /** A component's own pick first, then the host's active model, then the routing one, then the first. */
+  private systemComponent(kind: ModelKind, instanceId?: unknown): LoadedComponent | undefined {
     const models = this.components.filter(({ descriptor, instance }) => descriptor.kind === kind && instance);
-    return (models.find(({ definition }) => definition.instanceId === instanceId)
+    return models.find(({ definition }) => definition.instanceId === instanceId)
+      ?? models.find(({ definition }) => definition.instanceId === this.config.active?.[kind])
       ?? models.find(({ definition }) => definition.config?.role === "routing")
-      ?? models[0])?.instance;
+      ?? models[0];
+  }
+
+  /** Which instance the runtime uses for a kind that several components can fill. */
+  private activeInstanceId(kind: InterfaceKind): string | undefined {
+    if (MODEL_KINDS.includes(kind as ModelKind)) return this.systemComponent(kind as ModelKind)?.descriptor.instanceId;
+    if (!SINGLETON_KINDS.includes(kind)) return undefined;
+    return this.components.find(({ descriptor, instance }) => descriptor.kind === kind && instance)?.descriptor.instanceId;
+  }
+
+  async setActiveModel(kind: ModelKind, instanceId: string): Promise<RuntimeSnapshot> {
+    if (!MODEL_KINDS.includes(kind)) throw new Error(`Only ${MODEL_KINDS.join(" and ")} have an active model`);
+    if (this.get(instanceId).descriptor.kind !== kind) throw new Error(`${instanceId} is not a ${kind} component`);
+    this.config.active = { ...this.config.active, [kind]: instanceId };
+    await writeDynamicAppConfig(this.configPath, this.config);
+    return this.reload();
   }
 
   private async registerActionCapabilities(): Promise<void> {
@@ -478,10 +527,10 @@ export class DynamicRuntime {
   }
 
   /** Runs one chat turn and names the components whose capabilities the agent used, so the UI can show them. */
-  async chat(text: string, sessionId: string, onDelta?: (delta: string) => void): Promise<{ text: string; components: string[] }> {
+  async chat(text: string, sessionId: string, onDelta?: (delta: string) => void, onStep?: (step: ChatStep) => void): Promise<{ text: string; components: string[] }> {
     if (!this.webChat) throw new Error("Message runtime is not running: it needs memory, orchestrator and agent components");
     this.webChat.setComponents(await this.openUIComponents());
-    const { text: reply, capabilityIds } = await this.webChat.ask(text, sessionId, onDelta);
+    const { text: reply, capabilityIds } = await this.webChat.ask(text, sessionId, onDelta, onStep);
     const components = this.components
       .filter(({ descriptor, instance }) => descriptor.web && isCapability(instance) && capabilityIds.includes((instance as { manifest: { id: string } }).manifest.id))
       .map(({ descriptor }) => descriptor.instanceId);
@@ -542,6 +591,7 @@ export class DynamicRuntime {
       agentLoop,
       stream: this.environmentInstance()?.get("AI_STREAM") !== "false",
       onRun: (run) => { this.telemetry.record(run); webChat.onRun(run); },
+      onEvent: (event) => webChat.onEvent(event),
     });
     this.agentRuntime.start();
     console.log(`[dynamic] message runtime started (${inputs.map(({ channel }) => channel).join(", ")})`);
@@ -550,7 +600,7 @@ export class DynamicRuntime {
 
 /** The message runtime uses one memory, orchestrator and agent loop; extra ones would otherwise be ignored silently. */
 export function ignoredSingletons(components: readonly Pick<RuntimeComponentDto, "kind" | "instanceId">[]): string[] {
-  return (["memory", "orchestrator", "agent"] as const).flatMap((kind) => {
+  return SINGLETON_KINDS.flatMap((kind) => {
     const [used, ...ignored] = components.filter((component) => component.kind === kind);
     return used && ignored.length
       ? [`Only one ${kind} is used: ${used.instanceId} is active, ${ignored.map(({ instanceId }) => instanceId).join(", ")} ignored`]

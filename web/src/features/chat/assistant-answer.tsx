@@ -6,11 +6,13 @@ import { Surface } from "../surface/surface.js";
 import { Markdown } from "./markdown.js";
 import { GenerativeAnswer } from "./openui/generative-answer.js";
 import { ThinkingDots } from "./thinking-dots.js";
+import { WorkLog } from "./work-log.js";
 
 interface AnswerProps { turn: Turn; components: RuntimeComponentDto[]; onAsk(text: string): void }
 
 export function AssistantAnswer({ turn, components, onAsk }: AnswerProps) {
   return <div className="space-y-5">
+    {turn.steps?.length ? <WorkLog steps={turn.steps} streaming={turn.streaming === true} /> : null}
     <div className="text-[15px] leading-7">
       {/* Keyed by phase: the dots vanish and the answer fades in, without a crossfade that shifts layout. */}
       <motion.div key={phaseOf(turn)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>

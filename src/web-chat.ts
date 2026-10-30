@@ -1,11 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { InputInterface, InputListener, OutputContent, OutputInterface } from "@plaios/core";
+import type { AgentLoopEvent, InputInterface, InputListener, OutputContent, OutputInterface } from "@plaios/core";
 
 import { buildOpenUIInstructions } from "./openui-prompt.js";
-import type { AgentRunDto, OpenUIComponentSpec } from "./types.js";
+import type { AgentRunDto, ChatStep, OpenUIComponentSpec } from "./types.js";
 
-interface PendingChat { chunks: string[]; run?: AgentRunDto; onDelta?: (delta: string) => void }
+interface PendingChat { chunks: string[]; run?: AgentRunDto; onDelta?: (delta: string) => void; onStep?: (step: ChatStep) => void }
 
 /** Chat channel of the control plane UI. Each request runs in its own async context so concurrent chats stay correlated. */
 export class WebChat implements InputInterface, OutputInterface {
@@ -51,10 +51,17 @@ export class WebChat implements InputInterface, OutputInterface {
     if (pending) pending.run = run;
   }
 
-  async ask(text: string, sessionId: string, onDelta?: (delta: string) => void): Promise<{ text: string; capabilityIds: string[] }> {
+  onEvent(event: AgentLoopEvent): void {
+    const step = toStep(event);
+    if (step) this.context.getStore()?.onStep?.(step);
+  }
+
+  async ask(text: string, sessionId: string, onDelta?: (delta: string) => void, onStep?: (step: ChatStep) => void): Promise<{ text: string; capabilityIds: string[] }> {
     const listener = this.listener;
     if (!listener) throw new Error("Message runtime is not running");
-    const pending: PendingChat = { chunks: [], onDelta };
+    const pending: PendingChat = { chunks: [], onDelta, onStep };
+    // Orchestration runs before the agent loop emits anything; discovery closes this step.
+    onStep?.({ id: "plan", label: "Planning", status: "running" });
     await this.context.run(pending, () => listener({
       id: randomUUID(),
       channel: this.channel,
@@ -66,4 +73,19 @@ export class WebChat implements InputInterface, OutputInterface {
     }));
     return { text: pending.chunks.join(""), capabilityIds: pending.run?.capabilityIds ?? [] };
   }
+}
+
+function toStep(event: AgentLoopEvent): ChatStep | undefined {
+  switch (event.type) {
+    case "discovery.started": return { id: "plan", label: "Planning", status: "done" };
+    case "discovery.completed": return undefined;
+    case "model.started": return { id: `model-${event.runId}`, label: "Thinking", status: "running" };
+    case "capability.started": return { id: event.callId, label: event.capability, status: "running", detail: clip(JSON.stringify(event.arguments)) };
+    case "capability.completed": return { id: event.callId, label: event.capability, status: "done" };
+    case "capability.failed": return { id: event.callId, label: event.capability, status: "failed", detail: clip(event.error) };
+  }
+}
+
+function clip(text: string | undefined): string | undefined {
+  return text && text.length > 200 ? `${text.slice(0, 199)}…` : text;
 }

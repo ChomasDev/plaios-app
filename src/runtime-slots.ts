@@ -1,4 +1,4 @@
-import { kindsFromKeywords, type RegistryPackage } from "./store-catalog.js";
+import { isStoreCatalogPackage, kindsFromKeywords, type RegistryPackage } from "./store-catalog.js";
 import type {
   DynamicComponentConfig,
   DynamicManifestInterface,
@@ -31,7 +31,8 @@ export function buildRuntimeSlots(
       });
     }
     for (const entry of catalog) {
-      if (!kindsFromKeywords(entry.keywords).includes(kind) || !entry.version) continue;
+      // Plain npm libraries share keywords like "agent" or "memory"; only plugins can fill a slot.
+      if (!isStoreCatalogPackage(entry.name, entry.keywords) || !kindsFromKeywords(entry.keywords).includes(kind) || !entry.version) continue;
       const existing = options.get(entry.name);
       options.set(entry.name, {
         packageName: entry.name,
