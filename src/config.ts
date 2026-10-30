@@ -6,7 +6,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { isRecord, type DynamicAppConfig, type DynamicComponentConfig } from "./types.js";
 
 export const DEFAULT_CONFIG_FILE = "plaios.yaml";
-export const DEFAULT_REGISTRY = "http://localhost:4873";
+export const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 
 export function parseDynamicAppConfig(source: string): DynamicAppConfig {
   const value: unknown = parseYaml(source);

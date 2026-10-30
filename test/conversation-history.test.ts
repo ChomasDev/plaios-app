@@ -152,3 +152,22 @@ test("expands a matching protocol before the orchestrator runs", async () => {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
+
+test("a reply in another session sees the recent proactive question", async () => {
+  const asked: MemoryEntry = {
+    id: "chat-assistant-cron",
+    kind: "working",
+    content: "Vuoi che spenga la luce?",
+    createdAt: new Date("2026-09-18T21:55:00.000Z"),
+    userId: "thomas",
+    sessionId: "pattern-lights",
+    metadata: { namespace: "chat-history", role: "assistant", proactive: true },
+  };
+  const stale: MemoryEntry = { ...asked, id: "old", content: "Old question", createdAt: new Date("2026-09-17T21:55:00.000Z") };
+  const memory = memoryWith([]);
+  memory.recall = async (query) => query?.metadata?.proactive === true ? [asked, stale] : [];
+  const contextualized = await new ConversationHistory(memory).contextualize(message({ text: "sì" }));
+
+  assert.match(contextualized.text, /ASSISTANT: Vuoi che spenga la luce\?/);
+  assert.doesNotMatch(contextualized.text, /Old question/);
+});

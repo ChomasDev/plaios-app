@@ -12,6 +12,8 @@ import {
 const CHAT_NAMESPACE = "chat-history";
 const HISTORY_LIMIT = 10;
 const MEMORY_LIMIT = 10;
+const PROACTIVE_LIMIT = 5;
+const PROACTIVE_WINDOW_MS = 6 * 60 * 60 * 1_000;
 
 export class ConversationHistory {
   private readonly recalledByMessage = new Map<string, readonly MemoryEntry[]>();
@@ -20,7 +22,7 @@ export class ConversationHistory {
 
   async contextualize(message: InputMessage): Promise<InputMessage> {
     const [history, memories] = await Promise.all([
-      this.loadHistory(message.sessionId),
+      this.loadHistory(message),
       this.loadRelevantMemories(message),
     ]);
     if (memories.length > 0) this.recalledByMessage.set(message.id, memories);
@@ -75,7 +77,7 @@ export class ConversationHistory {
       createdAt: message.createdAt,
       userId: message.userId,
       sessionId: message.sessionId,
-      metadata: { namespace: CHAT_NAMESPACE, role: "user", channel: message.channel },
+      metadata: { namespace: CHAT_NAMESPACE, role: "user", channel: message.channel, ...proactiveFlag(message) },
     });
     await this.linkRecalledContext(id, message.id);
   }
@@ -90,7 +92,7 @@ export class ConversationHistory {
         createdAt: new Date(),
         userId: message.userId,
         sessionId: message.sessionId,
-        metadata: { namespace: CHAT_NAMESPACE, role: "assistant", channel: message.channel },
+        metadata: { namespace: CHAT_NAMESPACE, role: "assistant", channel: message.channel, ...proactiveFlag(message) },
       });
       await this.linkRecalledContext(id, message.id);
     } finally {
@@ -106,15 +108,38 @@ export class ConversationHistory {
     });
   }
 
-  private async loadHistory(sessionId: string): Promise<MemoryEntry[]> {
+  private async loadHistory(message: InputMessage): Promise<MemoryEntry[]> {
+    const [entries, proactive] = await Promise.all([
+      this.memory.recall({
+        sessionId: message.sessionId,
+        kinds: ["working"],
+        metadata: { namespace: CHAT_NAMESPACE },
+        limit: HISTORY_LIMIT,
+        order: "newest",
+      }),
+      this.loadProactive(message),
+    ]);
+    const ids = new Set(entries.map(({ id }) => id));
+    return [...entries, ...proactive.filter(({ id }) => !ids.has(id))]
+      .sort((left, right) => timeOf(left) - timeOf(right))
+      .slice(-HISTORY_LIMIT);
+  }
+
+  /**
+   * Cron and prediction runs speak first from their own session, so the user's
+   * reply ("sì") arrives in another one. Recent proactive answers join its history.
+   */
+  private async loadProactive(message: InputMessage): Promise<readonly MemoryEntry[]> {
+    if (!message.userId || message.metadata?.proactive === true) return [];
+    const since = message.createdAt.getTime() - PROACTIVE_WINDOW_MS;
     const entries = await this.memory.recall({
-      sessionId,
+      userId: message.userId,
       kinds: ["working"],
-      metadata: { namespace: CHAT_NAMESPACE },
-      limit: HISTORY_LIMIT,
+      metadata: { namespace: CHAT_NAMESPACE, role: "assistant", proactive: true },
+      limit: PROACTIVE_LIMIT,
       order: "newest",
     });
-    return [...entries].reverse();
+    return entries.filter((entry) => entry.sessionId !== message.sessionId && timeOf(entry) >= since);
   }
 
   private async loadRelevantMemories(
@@ -170,6 +195,14 @@ function incomingConversationHistory(
     const content = "content" in entry && typeof entry.content === "string" ? entry.content : "";
     return role && content ? [{ role, content }] : [];
   });
+}
+
+function proactiveFlag(message: InputMessage): { proactive?: true } {
+  return message.metadata?.proactive === true ? { proactive: true } : {};
+}
+
+function timeOf(entry: MemoryEntry): number {
+  return new Date(entry.createdAt).getTime();
 }
 
 function originalText(message: InputMessage): string {
