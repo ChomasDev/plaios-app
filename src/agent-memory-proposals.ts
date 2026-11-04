@@ -29,6 +29,9 @@ export async function persistMemoryProposals(
         namespace: "user-memory",
         reason: proposal.reason,
         sourceChannel: message.channel,
+        sourceMessageId: message.id,
+        // People named by the proposal become (or reuse) graph entities linked to this memory.
+        ...(Array.isArray(entitiesOf(proposal)) ? { entities: entitiesOf(proposal) } : {}),
       },
     });
     console.log(`Added memory: ${content}`);
@@ -47,9 +50,26 @@ async function alreadyRemembered(
     userId: message.userId,
     limit: 10,
   });
-  return matches.some(
-    (entry) => renderContent(entry.content).toLowerCase() === content.toLowerCase(),
-  );
+  const tokens = tokenSet(content);
+  return matches.some((entry) => similarity(tokenSet(renderContent(entry.content)), tokens) >= NEAR_DUPLICATE);
+}
+
+/** The same fact told twice ("la Vale" one day, "Valentina" the next) differs in a word or two. */
+const NEAR_DUPLICATE = 0.8;
+
+function entitiesOf(proposal: MemoryProposal): unknown {
+  return (proposal as { entities?: unknown }).entities;
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+}
+
+function similarity(left: ReadonlySet<string>, right: ReadonlySet<string>): number {
+  if (left.size === 0 || right.size === 0) return 0;
+  let shared = 0;
+  for (const token of left) if (right.has(token)) shared += 1;
+  return shared / (left.size + right.size - shared);
 }
 
 function renderContent(content: unknown): string {

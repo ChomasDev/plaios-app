@@ -33,6 +33,7 @@ export interface AgentRuntimeOptions {
 export class AgentRuntime {
   private listening = false;
   private running?: Promise<void>;
+  private readonly sessions = new Map<string, Promise<void>>();
 
   constructor(private readonly options: AgentRuntimeOptions) {}
 
@@ -61,7 +62,23 @@ export class AgentRuntime {
     if (errors.length) throw new AggregateError(errors, "Failed to stop PLAIOS inputs");
   }
 
-  private async handle(message: InputMessage, history: ConversationHistory): Promise<void> {
+  /** Messages of one session run in order, so a follow-up ("spegnile") sees the previous answer. */
+  private handle(message: InputMessage, history: ConversationHistory): Promise<void> {
+    return this.inSession(message.sessionId ?? `${message.channel}:${message.id}`, () => this.handleNow(message, history));
+  }
+
+  private inSession(sessionId: string, task: () => Promise<void>): Promise<void> {
+    const previous = this.sessions.get(sessionId) ?? Promise.resolve();
+    const current = previous.then(task);
+    const settled = current.catch(() => undefined);
+    this.sessions.set(sessionId, settled);
+    void settled.then(() => {
+      if (this.sessions.get(sessionId) === settled) this.sessions.delete(sessionId);
+    });
+    return current;
+  }
+
+  private async handleNow(message: InputMessage, history: ConversationHistory): Promise<void> {
     if (!this.options.onRun) return this.process(message, history);
     const started = Date.now();
     const run: AgentRunDto = { at: new Date(started).toISOString(), channel: message.channel, capabilityIds: [], durationMs: 0, ok: true };

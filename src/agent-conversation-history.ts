@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { InputMessage, Memory, MemoryEntry } from "@plaios/core/domain";
 
+import { renderContextMemory, selectContextMemories } from "./agent-memory-context.js";
 import {
   findMatchingProtocol,
   parseProtocolRemember,
@@ -11,7 +12,6 @@ import {
 
 const CHAT_NAMESPACE = "chat-history";
 const HISTORY_LIMIT = 10;
-const MEMORY_LIMIT = 10;
 const PROACTIVE_LIMIT = 5;
 const PROACTIVE_WINDOW_MS = 6 * 60 * 60 * 1_000;
 
@@ -142,18 +142,10 @@ export class ConversationHistory {
     return entries.filter((entry) => entry.sessionId !== message.sessionId && timeOf(entry) >= since);
   }
 
-  private async loadRelevantMemories(
-    message: InputMessage,
-  ): Promise<readonly MemoryEntry[]> {
-    if (!message.userId) return [];
-    return this.memory.recall({
-      text: originalText(message),
-      kinds: ["semantic", "episodic", "procedural"],
-      userId: message.userId,
-      limit: MEMORY_LIMIT,
-      order: "newest",
-    });
+  private loadRelevantMemories(message: InputMessage): Promise<readonly MemoryEntry[]> {
+    return selectContextMemories(this.memory, message, lastUserUtterance(originalText(message)));
   }
+
 
   private async linkRecalledContext(sourceId: string, messageId: string): Promise<void> {
     const memory = this.memory;
@@ -257,7 +249,7 @@ function buildContext(
   if (memories.length > 0) {
     sections.push(
       `Relevant memory (currentDate: ${currentDate.toISOString()}):\n` +
-        memories.map(renderMemory).join("\n"),
+        memories.map(renderContextMemory).join("\n"),
     );
   }
   if (history.length > 0) {
@@ -272,20 +264,4 @@ function buildContext(
 
 function renderContent(content: unknown): string {
   return typeof content === "string" ? content : JSON.stringify(content);
-}
-
-function renderMemory(entry: MemoryEntry): string {
-  const addedMemoryDate = validIsoDate(entry.addedMemoryDate ?? entry.createdAt);
-  const factDate = validIsoDate(entry.factDate);
-  const dates = [
-    `addedMemoryDate: ${addedMemoryDate}`,
-    ...(factDate ? [`factDate: ${factDate}`] : []),
-  ].join("; ");
-  return `- [${dates}] ${renderContent(entry.content)}`;
-}
-
-function validIsoDate(value: Date | undefined): string | undefined {
-  if (!value) return undefined;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
