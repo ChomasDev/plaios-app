@@ -49,14 +49,14 @@ export class ConversationsCapability implements Capability<ReadConversationsInpu
       if (!sessionId) return failure("VALIDATION_ERROR", "read needs the sessionId from list or search.");
       const entries = await memory.recall({ sessionId, kinds: ["working"], metadata: { namespace: CHAT_NAMESPACE }, limit: READ_LIMIT, order: "newest" });
       if (entries.length === 0) return failure("NOT_FOUND", `No conversation "${sessionId}".`);
-      return ok([`Conversation ${sessionId}, oldest first:`, ...[...entries].sort(byTime).map(line)].join("\n"));
+      return ok([`Conversation ${sessionId}, oldest first:`, ...[...entries].sort(byTime).map((entry) => line(entry))].join("\n"));
     }
     if (input.action === "search") {
       const query = input.query?.trim();
       if (!query) return failure("VALIDATION_ERROR", "search needs a query.");
       const entries = await memory.recall({ text: query, kinds: ["working"], metadata: { namespace: CHAT_NAMESPACE }, limit: 30 });
       if (entries.length === 0) return ok(`Nothing about "${query}" in past conversations.`);
-      return ok(entries.map((entry) => `${line(entry)}  (conversation ${entry.sessionId})`).join("\n"));
+      return ok(entries.map((entry) => `${line(entry, MESSAGE_CHARS)}  (conversation ${entry.sessionId})`).join("\n"));
     }
     return failure("VALIDATION_ERROR", "action must be list, read or search.");
   }
@@ -77,8 +77,13 @@ export function listConversations(entries: readonly MemoryEntry[]): string {
   }).join("\n");
 }
 
-function line(entry: MemoryEntry): string {
-  return `[${iso(entry.createdAt)}] ${String(entry.metadata?.role ?? "?").toUpperCase()}: ${text(entry).slice(0, MESSAGE_CHARS)}`;
+/** `read` returns whole messages; a `search` snippet says how much it left out instead of ending mid-sentence. */
+function line(entry: MemoryEntry, limit = Number.POSITIVE_INFINITY): string {
+  const body = text(entry);
+  const shown = body.length > limit
+    ? `${body.slice(0, limit)}… [${body.length - limit} more chars: read this conversation for the full message]`
+    : body;
+  return `[${iso(entry.createdAt)}] ${String(entry.metadata?.role ?? "?").toUpperCase()}: ${shown}`;
 }
 
 function text(entry: MemoryEntry): string {

@@ -33,6 +33,7 @@ export interface AgentRuntimeOptions {
 export class AgentRuntime {
   private listening = false;
   private running?: Promise<void>;
+  private readonly sessions = new Map<string, Promise<void>>();
 
   constructor(private readonly options: AgentRuntimeOptions) {}
 
@@ -61,7 +62,23 @@ export class AgentRuntime {
     if (errors.length) throw new AggregateError(errors, "Failed to stop PLAIOS inputs");
   }
 
-  private async handle(message: InputMessage, history: ConversationHistory): Promise<void> {
+  /** Messages of one session run in order, so a follow-up ("spegnile") sees the previous answer. */
+  private handle(message: InputMessage, history: ConversationHistory): Promise<void> {
+    return this.inSession(message.sessionId ?? `${message.channel}:${message.id}`, () => this.handleNow(message, history));
+  }
+
+  private inSession(sessionId: string, task: () => Promise<void>): Promise<void> {
+    const previous = this.sessions.get(sessionId) ?? Promise.resolve();
+    const current = previous.then(task);
+    const settled = current.catch(() => undefined);
+    this.sessions.set(sessionId, settled);
+    void settled.then(() => {
+      if (this.sessions.get(sessionId) === settled) this.sessions.delete(sessionId);
+    });
+    return current;
+  }
+
+  private async handleNow(message: InputMessage, history: ConversationHistory): Promise<void> {
     if (!this.options.onRun) return this.process(message, history);
     const started = Date.now();
     const run: AgentRunDto = { at: new Date(started).toISOString(), channel: message.channel, capabilityIds: [], durationMs: 0, ok: true };
@@ -78,6 +95,7 @@ export class AgentRuntime {
   }
 
   private async process(message: InputMessage, history: ConversationHistory, run?: AgentRunDto): Promise<void> {
+    if (message.guest) return this.processGuest(message, history, run);
     const contextualized = await history.contextualize(message);
     await history.rememberUser(contextualized);
     const confirmation = protocolRememberedReply(contextualized);
@@ -129,6 +147,31 @@ export class AgentRuntime {
     for (const { route, destination } of additional) {
       if (route.content === "text" && route.text !== undefined) await destination.write(route.text);
     }
+  }
+
+  /**
+   * A message from someone who is not the owner: no orchestrator, no recalled memories, no host
+   * tools (plan, sub-agents, past conversations), no memory extraction. The reply goes back to the
+   * channel it came from, and the agent may only use the capabilities the input allowed.
+   */
+  private async processGuest(message: InputMessage, history: ConversationHistory, run?: AgentRunDto): Promise<void> {
+    const output = this.options.outputs.find(({ channel }) => channel === message.channel);
+    if (!output) throw new Error(`Guest message from "${message.channel}" has no output on the same channel`);
+    const contextualized = await history.contextualize(message);
+    await history.rememberUser(contextualized);
+    const capabilityIds = [...new Set(message.guest?.capabilityIds ?? [])];
+    if (run) {
+      run.outputChannel = output.channel;
+      run.capabilityIds = capabilityIds;
+    }
+    const response = await this.options.agentLoop.run(addDeliveryContext(contextualized, output), {
+      capabilityIds,
+      stream: this.options.stream ?? true,
+      bypassModel: false,
+      onEvent: this.options.onEvent,
+    });
+    const text = await deliverResponse(response, [output]);
+    await history.rememberAssistant(message, text);
   }
 
   private async superviseInput(input: InputInterface, listener: (message: InputMessage) => Promise<void>): Promise<void> {
