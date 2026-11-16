@@ -95,6 +95,7 @@ export class AgentRuntime {
   }
 
   private async process(message: InputMessage, history: ConversationHistory, run?: AgentRunDto): Promise<void> {
+    if (message.guest) return this.processGuest(message, history, run);
     const contextualized = await history.contextualize(message);
     await history.rememberUser(contextualized);
     const confirmation = protocolRememberedReply(contextualized);
@@ -146,6 +147,31 @@ export class AgentRuntime {
     for (const { route, destination } of additional) {
       if (route.content === "text" && route.text !== undefined) await destination.write(route.text);
     }
+  }
+
+  /**
+   * A message from someone who is not the owner: no orchestrator, no recalled memories, no host
+   * tools (plan, sub-agents, past conversations), no memory extraction. The reply goes back to the
+   * channel it came from, and the agent may only use the capabilities the input allowed.
+   */
+  private async processGuest(message: InputMessage, history: ConversationHistory, run?: AgentRunDto): Promise<void> {
+    const output = this.options.outputs.find(({ channel }) => channel === message.channel);
+    if (!output) throw new Error(`Guest message from "${message.channel}" has no output on the same channel`);
+    const contextualized = await history.contextualize(message);
+    await history.rememberUser(contextualized);
+    const capabilityIds = [...new Set(message.guest?.capabilityIds ?? [])];
+    if (run) {
+      run.outputChannel = output.channel;
+      run.capabilityIds = capabilityIds;
+    }
+    const response = await this.options.agentLoop.run(addDeliveryContext(contextualized, output), {
+      capabilityIds,
+      stream: this.options.stream ?? true,
+      bypassModel: false,
+      onEvent: this.options.onEvent,
+    });
+    const text = await deliverResponse(response, [output]);
+    await history.rememberAssistant(message, text);
   }
 
   private async superviseInput(input: InputInterface, listener: (message: InputMessage) => Promise<void>): Promise<void> {

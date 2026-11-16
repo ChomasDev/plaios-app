@@ -21,6 +21,8 @@ export class ConversationHistory {
   constructor(private readonly memory: Memory) {}
 
   async contextualize(message: InputMessage): Promise<InputMessage> {
+    // A guest sees only its own conversation: no recalled memories, no owner protocols.
+    if (message.guest) return this.contextualizeGuest(message);
     const [history, memories] = await Promise.all([
       this.loadHistory(message),
       this.loadRelevantMemories(message),
@@ -64,6 +66,31 @@ export class ConversationHistory {
             }
           : {}),
         ...(matched ? { protocolTrigger: matched.trigger } : {}),
+      },
+    };
+  }
+
+  private async contextualizeGuest(message: InputMessage): Promise<InputMessage> {
+    const entries = await this.memory.recall({
+      sessionId: message.sessionId,
+      kinds: ["working"],
+      metadata: { namespace: CHAT_NAMESPACE },
+      limit: HISTORY_LIMIT,
+      order: "newest",
+    });
+    const conversationHistory = entries
+      .filter((entry) => entry.sessionId === message.sessionId)
+      .sort((left, right) => timeOf(left) - timeOf(right))
+      .map((entry) => ({ role: String(entry.metadata?.role ?? "message"), content: renderContent(entry.content) }));
+    return {
+      ...message,
+      text: buildContext(message.text, conversationHistory, [], message.createdAt),
+      metadata: {
+        ...message.metadata,
+        originalText: message.text,
+        conversationHistory,
+        historyEntries: conversationHistory.length,
+        memoryEntries: 0,
       },
     };
   }

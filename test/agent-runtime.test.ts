@@ -148,3 +148,39 @@ test("records each run with chosen capabilities, latency and failures", async ()
   assert.ok(runs.recent[1]!.durationMs >= 0);
   await runtime.stop();
 });
+
+test("a guest message skips the orchestrator, recalled memories and host tools", async () => {
+  let seen: { message: InputMessage; capabilityIds: readonly string[] } | undefined;
+  const recalls: unknown[] = [];
+  const { runtime, getListener, written } = createHarness(
+    { async orchestrate() { throw new Error("guests never reach the orchestrator"); } } as Orchestrator,
+    {
+      async run(message, options) {
+        seen = { message, capabilityIds: options.capabilityIds };
+        return { type: "text" as const, text: "Ciao! Passo il messaggio." };
+      },
+    } as AgentLoop,
+  );
+  // Any recall that is not this session's history would be the owner's memory.
+  const memory = (runtime as unknown as { options: { memory: Memory } }).options.memory;
+  memory.recall = async (query) => { recalls.push(query); return []; };
+  runtime.start();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const listener = getListener();
+  assert.ok(listener);
+  await listener({
+    id: "guest-1",
+    channel: "openrouter-api",
+    sessionId: "whatsapp-393331112222",
+    userId: "whatsapp:+393331112222",
+    text: "cosa sai fare?",
+    createdAt: new Date(),
+    guest: { instructions: "Take a message.", capabilityIds: ["web.search"] },
+  });
+  assert.deepEqual(written, ["Ciao! Passo il messaggio."]);
+  assert.deepEqual(seen?.capabilityIds, ["web.search"]);
+  assert.equal(seen?.message.metadata?.memoryEntries, 0);
+  assert.equal(recalls.length, 1);
+  assert.equal((recalls[0] as { sessionId?: string }).sessionId, "whatsapp-393331112222");
+  await runtime.stop();
+});
